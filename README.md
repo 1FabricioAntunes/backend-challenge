@@ -72,6 +72,7 @@ Comprehensive documentation organized by audience:
 
 ### For Developers
 - **[Architecture](docs/architecture.md)** — System design, components, and interactions
+   - See [**Project Structure**](docs/architecture.md#project-structure) for the complete folder layout
 - **[Development Guide](docs/development-guide.md)** — Local setup, debugging, and workflows
 - **[Backend](docs/backend.md)** — API implementation and patterns
 - **[Frontend](docs/frontend.md)** — UI implementation and state management

@@ -121,6 +121,73 @@ C4Context
     UpdateElementStyle(authProvider, $bgColor="#fff4e1")
 ```
 
+## Project Structure
+
+The project is organized as a **monorepo** containing backend, frontend, infrastructure, and documentation:
+
+```
+root/
+├── README.md                          # Project overview and quick start
+├── technical-decisions.md             # Consolidated technical decisions
+├── docs/                              # Comprehensive documentation
+│   ├── architecture.md                # This file - System design and structure
+│   ├── business-rules.md              # CNAB format and business logic
+│   ├── backend.md                     # Backend code organization (Clean Architecture)
+│   ├── frontend.md                    # Frontend implementation details
+│   ├── database.md                    # Database schema and design
+│   ├── async-processing.md            # Async workflow and SQS processing
+│   ├── security.md                    # Security implementation and OWASP compliance
+│   ├── observability.md               # Logging, metrics, and monitoring
+│   ├── testing-strategy.md            # Test approach and coverage
+│   ├── decisions-and-tradeoffs.md     # Architectural decisions and rationale
+│   ├── development-guide.md           # Local development setup and debugging
+│   ├── deployment.md                  # Local and AWS production deployment
+│   └── troubleshooting.md             # Common issues and solutions
+├── src/
+│   ├── docker-compose.yml             # Local orchestration (all services)
+│   ├── backend/                       # .NET Backend (ASP.NET Core + Workers)
+│   │   ├── TransactionProcessor.Domain/              # Domain layer (entities, rules)
+│   │   ├── TransactionProcessor.Application/         # Application layer (use cases)
+│   │   ├── TransactionProcessor.Infrastructure/      # Infrastructure layer (external services)
+│   │   ├── TransactionProcessor.Api/                 # API layer (FastEndpoints)
+│   │   ├── TransactionProcessor.Worker/              # Background worker (SQS processing)
+│   │   ├── tests/                                    # Test projects (Unit, Integration, E2E)
+│   │   ├── Dockerfile.api                            # Docker image for API
+│   │   ├── Dockerfile.worker                         # Docker image for Worker
+│   │   └── TransactionProcessor.sln                  # Solution file
+│   ├── frontend/                      # React Frontend
+│   │   ├── src/
+│   │   │   ├── components/            # React components
+│   │   │   ├── services/              # API service layer
+│   │   │   └── types/                 # TypeScript types
+│   │   ├── Dockerfile                 # Docker image for frontend
+│   │   ├── nginx.conf                 # Nginx configuration
+│   │   ├── vite.config.ts             # Vite configuration
+│   │   ├── package.json               # npm/pnpm dependencies
+│   │   └── tsconfig.json              # TypeScript configuration
+│   └── infra/
+│       └── localstack-init/           # LocalStack initialization scripts
+│           └── init-aws.sh            # Setup S3, SQS, Cognito locally
+└── LICENSE                            # MIT License
+```
+
+### Key Directory Notes
+
+**Backend Code Organization** (see [backend.md](backend.md)):
+- The backend follows **Clean Architecture** with layers:
+    - **Domain**: Core business logic (entities, value objects, aggregates)
+    - **Application**: Use cases, DTOs, validators
+    - **Infrastructure**: External services (DB, AWS, messaging)
+    - **Presentation (API)**: FastEndpoints, middleware, filters
+
+**Tests Organization**:
+- **Unit/**: Domain, Application, and Infrastructure unit tests
+- **Integration/**: Database, SQS, S3, and API integration tests
+- **E2E/**: Happy path end-to-end tests
+
+**Documentation Structure**:
+- Organized by audience: business stakeholders, developers, technical reviewers, operations
+
 ## Upload and Processing Flow
 
 ```mermaid
