@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TransactionProcessor.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+082833af82f32e118afc8cc7ff9d6009bb8ac639")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6511e231aba221b2d53d0907094664eb17112d70")]
 [assembly: System.Reflection.AssemblyProductAttribute("TransactionProcessor.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TransactionProcessor.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

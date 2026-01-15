@@ -56,3 +56,4 @@ C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\obj\
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\obj\Debug\net8.0\TransactionProcessor.Api.pdb
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\obj\Debug\net8.0\TransactionProcessor.Api.genruntimeconfig.cache
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\obj\Debug\net8.0\ref\TransactionProcessor.Api.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\appsettings.Production.json
