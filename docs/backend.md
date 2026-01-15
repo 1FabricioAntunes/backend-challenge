@@ -105,7 +105,7 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
 {
     public override void Configure()
     {
-        Post("/api/files/v1/upload");
+        Post("/api/files/v1");
         AllowAnonymous(); // Or RequireAuthorization()
     }
 
@@ -117,16 +117,17 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
 ```
 
 ### Endpoints
- 
+
 **API Versioning (URL-based, v1)**
 
-- `POST /api/files/v1/upload` - Upload file metadata
+- `POST /api/files/v1` - Upload CNAB file (multipart/form-data)
 - `GET /api/files/v1` - List uploaded files
 - `GET /api/files/v1/{id}` - Get file status
 - `GET /api/transactions/v1` - Query transactions (with filters)
 - `GET /api/stores/v1` - List stores with balances
 
 **Versioning Strategy**
+
 - Major version in URL path (v1, v2, ...)
 - Breaking changes require new major version
 - Non-breaking changes do not bump version
@@ -134,6 +135,7 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
 - Document changes in changelog and Swagger description
 
 **Query Parameters Example**
+
 ```
 GET /api/transactions/v1?
     storeName=Store+A&        // validated & sanitized
@@ -165,6 +167,7 @@ GET /api/transactions/v1?
 **Sanitization Rules**:
 
 1. **String Fields**:
+
    ```csharp
    // Store name sanitization
    public class StoreNameValidator : AbstractValidator<string>
@@ -212,12 +215,14 @@ GET /api/transactions/v1?
    - Timezone handling (convert to UTC)
 
 **SQL Injection Prevention**:
+
 - ✅ Parameterized queries (EF Core default)
 - ✅ No string concatenation in queries
 - ✅ Input validation before database calls
 - ✅ ORM-level protection
 
 **XSS Prevention**:
+
 - ✅ HTML encoding for all outputs
 - ✅ Content Security Policy headers
 - ✅ No eval() or innerHTML in frontend
@@ -278,6 +283,7 @@ public interface ITransactionRepository
 **Critical Optimizations**:
 
 1. **AsNoTracking() for Read Queries**:
+
 ```csharp
 // ✅ CORRECT: Read-only queries don't need tracking
 public async Task<List<TransactionDto>> GetAllAsync()
@@ -304,6 +310,7 @@ public async Task<List<Transaction>> GetAllAsync()
 ```
 
 2. **Avoid N+1 Query Problem**:
+
 ```csharp
 // ✅ CORRECT: Single query with Include
 var transactions = await _context.Transactions
@@ -320,6 +327,7 @@ foreach (var t in transactions)
 ```
 
 3. **Batch Operations**:
+
 ```csharp
 // ✅ Batch insert for file processing
 await _context.Transactions.AddRangeAsync(transactions);
@@ -327,6 +335,7 @@ await _context.SaveChangesAsync();  // Single round-trip
 ```
 
 4. **Explicit Projections**:
+
 ```csharp
 // ✅ Only select needed columns
 var storeNames = await _context.Stores
@@ -336,6 +345,7 @@ var storeNames = await _context.Stores
 ```
 
 **Performance Checklist**:
+
 - ✅ All read-only queries use `.AsNoTracking()`
 - ✅ Related entities loaded with `.Include()` (not lazy loading)
 - ✅ Projections used to fetch only needed data
@@ -357,6 +367,7 @@ var storeNames = await _context.Stores
 **Format**: `yyyy-MM-ddTHH:mm:ss.fffZ`
 
 **JSON Serialization Configuration**:
+
 ```csharp
 services.AddControllers()
     .AddJsonOptions(options =>
@@ -376,10 +387,12 @@ services.AddControllers()
 ```
 
 **Database Storage**:
+
 - PostgreSQL type: `timestamp with time zone`
 - All dates stored as UTC
 - No local timezone assumptions
 - EF Core configuration:
+
 ```csharp
 entity.Property(e => e.CreatedAt)
     .HasColumnType("timestamp with time zone")
@@ -387,6 +400,7 @@ entity.Property(e => e.CreatedAt)
 ```
 
 **API Consistency**:
+
 - All request timestamps must be ISO 8601 UTC
 - All response timestamps are ISO 8601 UTC
 - Validation rejects invalid formats
@@ -402,82 +416,62 @@ entity.Property(e => e.CreatedAt)
 - **Authorization policies**: Role-based access control (RBAC)
 - **Role-based access**: User roles from token claims
 
-### LocalStack Cognito Integration
+### JWT Configuration & Security
 
-#### Configuration
+#### LocalStack Cognito Setup
 
 ```csharp
-// LocalStack Cognito configuration
+// LocalStack Cognito configuration (local development)
 services.AddAuthentication("Bearer")
     .AddJwtBearer("Bearer", options =>
     {
         options.Authority = "http://localhost:4566"; // LocalStack endpoint
         options.RequireHttpsMetadata = false; // Local development only
+        
         options.TokenValidationParameters = new TokenValidationParameters
         {
+            // Issuer validation
             ValidateIssuer = true,
             ValidIssuer = "http://localhost:4566/us-east-1_local",
+            
+            // Audience validation
             ValidateAudience = true,
             ValidAudience = "api-client-id",
+            
+            // Lifetime validation
             ValidateLifetime = true,
+            RequireExpirationTime = true,
             ClockSkew = TimeSpan.FromMinutes(5),
+            
+            // Signature validation
             ValidateIssuerSigningKey = true,
-            RequireSignedTokens = true
+            RequireSignedTokens = true,
+            
+            // Algorithm security (prevent algorithm confusion attacks)
+            AlgorithmValidator = (algorithm, securityKey, tokenValidationParameters) =>
+            {
+                if (algorithm != SecurityAlgorithms.RsaSha256)
+                {
+                    throw new SecurityTokenInvalidAlgorithmException(
+                        $"Invalid algorithm: {algorithm}. Expected RS256.");
+                }
+                return true;
+            }
         };
     });
 ```
 
-#### Token Validation
+#### Comprehensive JWT Validation
 
-Comprehensive JWT validation includes:
+The configuration above enforces:
 
-- **Signature Verification**: Validate signature using issuer's public key
-- **Algorithm Validation**: Reject `alg: none` and unexpected algorithms
-- **Expiration Check**: Validate `exp` claim with clock skew tolerance
-- **Issuer Validation**: Verify `iss` claim matches expected issuer
-- **Audience Validation**: Verify `aud` claim matches expected audience
-- **Claims Validation**: Validate required claims (`sub`, `iat`, `nbf`)
-
-### JWT Security Implementation
-
-#### Algorithm Security
-
-```csharp
-// Prevent algorithm confusion attacks
-options.TokenValidationParameters = new TokenValidationParameters
-{
-    // Explicitly require RS256
-    AlgorithmValidator = (algorithm, securityKey, tokenValidationParameters) =>
-    {
-        if (algorithm != SecurityAlgorithms.RsaSha256)
-        {
-            throw new SecurityTokenInvalidAlgorithmException(
-                $"Invalid algorithm: {algorithm}. Expected RS256.");
-        }
-        return true;
-    },
-    // Reject unsigned tokens
-    RequireSignedTokens = true,
-    // Validate signature
-    ValidateIssuerSigningKey = true
-};
-```
-
-#### Claims Validation
-
-```csharp
-// Validate all required claims
-options.TokenValidationParameters = new TokenValidationParameters
-{
-    ValidateIssuer = true,
-    ValidateAudience = true,
-    ValidateLifetime = true,
-    ValidateIssuerSigningKey = true,
-    RequireExpirationTime = true,
-    RequireSignedTokens = true,
-    ClockSkew = TimeSpan.FromMinutes(5) // Clock skew tolerance
-};
-```
+- **Signature Verification**: Validates signature using issuer's public key
+- **Algorithm Security**: Explicitly requires RS256, rejects `alg: none` and weak algorithms
+- **Expiration Check**: Validates `exp` claim with 5-minute clock skew tolerance
+- **Issuer Validation**: Verifies `iss` claim matches expected issuer
+- **Audience Validation**: Verifies `aud` claim matches expected audience
+- **Claims Validation**: Validates required claims (`sub`, `iat`, `nbf`, `exp`)
+- **Unsigned Token Rejection**: Rejects tokens without signature
 
 ### Security Considerations
 

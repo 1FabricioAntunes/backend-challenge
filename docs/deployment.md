@@ -385,7 +385,7 @@ aws logs tail /aws/lambda/transaction-processor-worker --follow
 
 ```bash
 # Upload a test file
-curl -X POST https://api.yourdomain.com/api/files/v1/upload \
+curl -X POST https://api.yourdomain.com/api/files/v1 \
   -H "Authorization: Bearer <token>" \
   -F "file=@test.cnab"
 
@@ -398,6 +398,7 @@ curl https://api.yourdomain.com/api/transactions/v1
 ### Environment-Specific Configuration
 
 **Local (appsettings.Development.json)**:
+
 ```json
 {
   "AWS": {
@@ -408,6 +409,7 @@ curl https://api.yourdomain.com/api/transactions/v1
 ```
 
 **Production (appsettings.Production.json)**:
+
 ```json
 {
   "AWS": {
@@ -422,6 +424,7 @@ curl https://api.yourdomain.com/api/transactions/v1
 ### Secrets Management
 
 Use AWS Secrets Manager for all sensitive data:
+
 - Database credentials
 - Cognito configuration
 - API keys

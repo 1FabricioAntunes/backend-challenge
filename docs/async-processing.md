@@ -27,7 +27,7 @@ sequenceDiagram
     participant DB
 
     User->>Frontend: Upload CNAB file
-    Frontend->>API: POST /api/cnab/v1/upload (metadata)
+    Frontend->>API: POST /api/files/v1 (multipart/form-data)
     
     API->>S3: Store file
     S3-->>API: File reference (S3 key)
