@@ -1,13 +1,19 @@
+using FastEndpoints;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// Services: FastEndpoints DI
+builder.Services.AddFastEndpoints();
+
+// Optional Swagger (kept for future FastEndpoints swagger integration)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// HTTP pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -16,29 +22,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// FastEndpoints
+app.UseFastEndpoints();
 
-app.MapGet("/weatherforecast", () =>
+// JSON serialization (camelCase, enums as strings, ignore nulls)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(opts =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+    opts.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    opts.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

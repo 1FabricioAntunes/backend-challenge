@@ -55,6 +55,10 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "FastEndpoints": {
+              "target": "Package",
+              "version": "[7.2.0, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[8.0.17, )"
