@@ -1,99 +1,112 @@
-# Programming Challenge - Back-end Position
+# TransactionProcessor Backend Challenge
 
-Please read this document carefully from beginning to end. The purpose of this test is to assess your technical programming skills. The challenge consists of parsing this text file (https://github.com/ByCodersTec/desafio-ruby-on-rails/blob/master/CNAB.txt) and saving its information (financial transactions) into a database of your choice. This challenge should be completed by you at home. Take as much time as you need, but usually you shouldn't need more than a few hours.
+Cloud-native, serverless, and asynchronous system for processing CNAB files, persisting transactional data, and exposing query capabilities via APIs and a web frontend.
 
-## Challenge Submission Instructions
+## Overview
 
-1.  First, fork this project to your Github account (create one if you don't have it).
-2.  Implement the project as described below in your local clone.
-3.  Send the project or the fork/link to your ByCoders contact with a copy to **rh@bycoders.com.br**.
+This project demonstrates a production-ready backend solution built with modern architectural patterns and best practices. The system processes CNAB (Brazilian bank interchange) files asynchronously, guarantees transactional integrity, and provides a responsive user experience.
 
-## Project Description
+**Key Features:**
+- Asynchronous file processing with SQS
+- Transactional integrity (all-or-nothing per file)
+- Clean Architecture with Domain-Driven Design
+- Serverless-ready (AWS Lambda)
+- Comprehensive observability and testing
 
-You received a CNAB file with financial transaction data from several stores. We need to create a way for this data to be imported into a database. Your task is to create a web interface that accepts uploads of the CNAB file (https://github.com/ByCodersTec/desafio-ruby-on-rails/blob/master/CNAB.txt), normalizes the data, stores it in a relational database, and displays this information on the screen.
+**Tech Stack:**
+- **Backend**: .NET 8, ASP.NET Core, FastEndpoints, EF Core, PostgreSQL
+- **Frontend**: React 19, TypeScript, Vite
+- **Infrastructure**: Docker, LocalStack, AWS (Lambda, S3, SQS, Cognito)
+- **Testing**: xUnit, FluentAssertions, Testcontainers
 
-## Web Application Requirements
+## Quick Start
 
-Your web application **MUST**:
+### Prerequisites
 
-1.  Have a screen (via a form) to upload the file\
-    *Extra points if you don't use a popular CSS framework.*
+- Docker and Docker Compose
+- (Optional) .NET 8 SDK, Node.js 22+, pnpm for local development
 
-2.  Parse the received file, normalize the data, and correctly save it
-    in a relational database\
-    *(Pay attention to the CNAB documentation below.)*
+### Run with Docker Compose
 
-3.  Display a **list of imported operations by store**, including a
-    **total account balance**
+1. **Clone and navigate to source**:
+   ```bash
+   git clone <repository-url>
+   cd src
+   ```
 
-4.  Be written in your preferred programming language
+2. **Start all services**:
+   ```bash
+   docker-compose up --build
+   ```
 
-5.  Be simple to configure and run in a Unix-based system (Linux or
-    macOS)\
-    *(Use only free/open-source languages and libraries.)*
+3. **Access the application**:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:5000
+   - Swagger/OpenAPI: http://localhost:5000/swagger
 
-6.  Use **Git** with atomic and well-described commits
+4. **Stop services**:
+   ```bash
+   docker-compose down
+   ```
 
-7.  Use **PostgreSQL, MySQL, or SQL Server**
+For detailed local development setup without Docker, see [Development Guide](docs/development-guide.md).
 
-8.  Have **automated tests**
+## API Reference
 
-9.  Use **Docker Compose**\
-    *Extra points if you use it.*
+The system exposes three main endpoints:
 
-10. Include a **README** describing the project and its setup
+- **POST** `/api/files/v1/upload` — Upload CNAB file for processing
+- **GET** `/api/transactions/v1` — Query transactions (supports filtering by store and date)
+- **GET** `/api/stores/v1` — List stores with balances
 
-11. Include instructions describing **how to consume the API endpoint**
+For detailed request/response schemas and interactive testing, visit the Swagger UI at http://localhost:5000/swagger.
 
-## The application does NOT need to:
+See [Backend Documentation](docs/backend.md) for comprehensive API details.
 
-1.  Handle authentication or authorization\
-    *Extra points if implemented; even more if OAuth.*
+## Documentation
 
-2.  Document the API\
-    *Optional --- but earns extra points.*
+Comprehensive documentation organized by audience:
 
-## CNAB Documentation
+### For Business Stakeholders
+- **[Business Rules](docs/business-rules.md)** — CNAB file format, transaction types, processing rules
 
-| Field        | Start | End | Size | Description                                 |
-|--------------|:-----:|:---:|:----:|---------------------------------------------|
-| Type         | 1     | 1   | 1    | Transaction type                             |
-| Date         | 2     | 9   | 8    | Date of occurrence                           |
-| Value        | 10    | 19  | 10   | Transaction amount (divide by 100.00)        |
-| CPF          | 20    | 30  | 11   | Beneficiary's CPF                            |
-| Card         | 31    | 42  | 12   | Card used in the transaction                 |
-| Time         | 43    | 48  | 6    | Time of occurrence (UTC-3)                   |
-| Store Owner  | 49    | 62  | 14   | Store representative name                    |
-| Store Name   | 63    | 81  | 19   | Store name                                   |
+### For Developers
+- **[Architecture](docs/architecture.md)** — System design, components, and interactions
+   - See [**Project Structure**](docs/architecture.md#project-structure) for the complete folder layout
+- **[Development Guide](docs/development-guide.md)** — Local setup, debugging, and workflows
+- **[Backend](docs/backend.md)** — API implementation and patterns
+- **[Frontend](docs/frontend.md)** — UI implementation and state management
+- **[Database](docs/database.md)** — Schema design and EF Core configuration
+- **[Async Processing](docs/async-processing.md)** — SQS workflow and retry mechanisms
 
-## Transaction Types
+### For Technical Reviewers
+- **[Security](docs/security.md)** — Authentication, authorization, OWASP compliance
+- **[Observability](docs/observability.md)** — Logging, metrics, monitoring
+- **[Testing Strategy](docs/testing-strategy.md)** — Unit, integration, E2E tests
+- **[Decisions & Trade-offs](docs/decisions-and-tradeoffs.md)** — Architectural decisions and rationale
 
-| Type | Description    | Nature  | Sign |
-|------|----------------|---------|------|
-| 1    | Debit          | Income  | +    |
-| 2    | Boleto         | Expense | -    |
-| 3    | Financing      | Expense | -    |
-| 4    | Credit         | Income  | +    |
-| 5    | Loan Receipt   | Income  | +    |
-| 6    | Sales          | Income  | +    |
-| 7    | TED Receipt    | Income  | +    |
-| 8    | DOC Receipt    | Income  | +    |
-| 9    | Rent           | Expense | -    |
+### Operations
+- **[Deployment Guide](docs/deployment.md)** — Local and AWS production deployment
+- **[Troubleshooting](docs/troubleshooting.md)** — Common issues and solutions
 
+## Contributing
 
-## Evaluation Criteria
+This is a challenge project. For questions or clarifications, consult the [Decisions and Trade-offs](docs/decisions-and-tradeoffs.md) document.
 
-Your project will be evaluated based on:
+To contribute:
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Commit your changes: `git commit -am 'Add feature'`
+4. Push to the branch: `git push origin feature/your-feature`
+5. Submit a pull request
 
-1.  Whether your application meets the basic requirements
-2.  Documentation on environment setup and application execution
-3.  Whether you followed the challenge submission instructions
-4.  Quality and coverage of automated tests
+## License
 
-We will also assess:
+MIT License. See LICENSE file for details.
 
--   Your familiarity with standard libraries
--   Your experience with object-oriented programming
--   The structure and maintainability of your project
+---
 
-## Good luck!
+This project is part of the TransactionProcessor Backend Challenge and is provided for educational and evaluation purposes.
+
+**Last Updated**: January 14, 2026  
+**Version**: 1.0.0
