@@ -55,7 +55,7 @@ For detailed local development setup without Docker, see [Development Guide](doc
 
 The system exposes three main endpoints:
 
-- **POST** `/api/files/v1/upload` — Upload CNAB file for processing
+- **POST** `/api/files/v1` — Upload CNAB file for processing
 - **GET** `/api/transactions/v1` — Query transactions (supports filtering by store and date)
 - **GET** `/api/stores/v1` — List stores with balances
 

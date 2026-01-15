@@ -249,7 +249,7 @@ public async Task EndToEnd_Upload_Process_Query()
     var fileContent = GetValidCnabFile();
     
     // Act - Upload
-    var uploadResponse = await _client.PostAsync("/api/files/v1/upload", fileContent);
+    var uploadResponse = await _client.PostAsync("/api/files/v1", fileContent);
     uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
     
     // Act - Wait for processing

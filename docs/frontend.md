@@ -229,7 +229,7 @@ The frontend performs basic validation:
 - Environment-based API URL (`VITE_API_URL`)
 - Consistent error handling
 - Typed request/response interfaces
-- API versioning in URLs (e.g., `/api/cnab/v1/upload`)
+- API versioning in URLs (e.g., `/api/files/v1`, `/api/transactions/v1`, `/api/stores/v1`)
 ```
 
 ### Error Handling
