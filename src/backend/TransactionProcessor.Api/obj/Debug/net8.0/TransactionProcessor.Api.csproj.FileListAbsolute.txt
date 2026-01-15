@@ -68,3 +68,7 @@ C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\NSwag.Generation.AspNetCore.dll
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\YamlDotNet.dll
 C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\obj\Debug\net8.0\TransactionProcessor.Api.xml
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\MediatR.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\MediatR.Contracts.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\Microsoft.EntityFrameworkCore.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Api\bin\Debug\net8.0\Microsoft.EntityFrameworkCore.Abstractions.dll
