@@ -1,0 +1,16 @@
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\bin\Debug\net8.0\TransactionProcessor.Infrastructure.deps.json
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\bin\Debug\net8.0\TransactionProcessor.Infrastructure.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\bin\Debug\net8.0\TransactionProcessor.Infrastructure.pdb
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\bin\Debug\net8.0\TransactionProcessor.Domain.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\bin\Debug\net8.0\TransactionProcessor.Domain.pdb
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.csproj.AssemblyReference.cache
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.AssemblyInfoInputs.cache
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.AssemblyInfo.cs
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.csproj.CoreCompileInputs.cache
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.sourcelink.json
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\Transact.DE7C2935.Up2Date
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\refint\TransactionProcessor.Infrastructure.dll
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\TransactionProcessor.Infrastructure.pdb
+C:\Sistemas\bycoders\backend-challenge\src\backend\TransactionProcessor.Infrastructure\obj\Debug\net8.0\ref\TransactionProcessor.Infrastructure.dll
