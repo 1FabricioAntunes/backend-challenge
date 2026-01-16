@@ -65,3 +65,11 @@ app.UseHttpsRedirection();
 app.UseFastEndpoints();
 
 app.Run();
+
+namespace TransactionProcessor.Api
+{
+    /// <summary>
+    /// Program class for test framework integration
+    /// </summary>
+    public partial class Program { }
+}
