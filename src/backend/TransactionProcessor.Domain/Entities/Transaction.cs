@@ -1,4 +1,5 @@
 using TransactionProcessor.Domain.ValueObjects;
+using FileEntity = TransactionProcessor.Domain.Entities.File;
 
 namespace TransactionProcessor.Domain.Entities;
 
@@ -13,4 +14,7 @@ public class Transaction
     public decimal Amount { get; set; }
     public DateTime OccurredAt { get; set; }
     public string Description { get; set; } = string.Empty;
+
+    // Navigation property
+    public FileEntity? File { get; set; }
 }
