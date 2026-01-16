@@ -11,10 +11,13 @@
   <ItemGroup>
     <PackageReference Include="FastEndpoints" Version="7.2.0" />
     <PackageReference Include="FastEndpoints.Swagger" Version="7.2.0" />
+    <PackageReference Include="MediatR" Version="14.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TransactionProcessor.Application\TransactionProcessor.Application.csproj" />
+    <ProjectReference Include="..\TransactionProcessor.Infrastructure\TransactionProcessor.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
