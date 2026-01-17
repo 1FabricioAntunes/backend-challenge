@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16
+    container_name: transactionprocessor-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: transactionprocessor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d transactionprocessor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - transactionprocessor-network
+
+  # LocalStack - AWS services emulation (S3, SQS, Secrets Manager, Cognito)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,secretsmanager,cognito-idp
+      - AWS_DEFAULT_REGION=us-east-1
+      - DEBUG=1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      # Auto-run init scripts when LocalStack is ready
+      - ./src/infra/localstack-init:/etc/localstack/init/ready.d
+      # Optional, enables some advanced emulation features
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
+  # Backend API (.NET)
+  api:
+    build:
+      context: ./src/backend
+      # Dockerfile will be added later; pointing to API project folder
+      dockerfile: TransactionProcessor.Api/Dockerfile
+    container_name: transactionprocessor-api
+    restart: unless-stopped
+    ports:
+      - "5000:80"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres
+      AWS__Region: us-east-1
+      AWS__S3__ServiceURL: http://localstack:4566
+      AWS__SQS__ServiceURL: http://localstack:4566
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    volumes:
+      # Mount backend source for hot reload/dev workflows
+      - ./src/backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/swagger >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
+  # Frontend (Vite/React)
+  frontend:
+    build:
+      context: ./src/frontend
+      # Dockerfile to be created later
+      dockerfile: Dockerfile
+    container_name: transactionprocessor-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000
+      VITE_API_URL: http://localhost:5000
+    volumes:
+      # Mount frontend source for hot reload
+      - ./src/frontend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
+volumes:
+  postgres-data:
+    driver: local
+  localstack-data:
+    driver: local
+
+networks:
+  transactionprocessor-network:
+    driver: bridge
