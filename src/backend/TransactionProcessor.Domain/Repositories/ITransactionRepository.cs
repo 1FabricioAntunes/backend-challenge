@@ -4,15 +4,16 @@ namespace TransactionProcessor.Domain.Repositories;
 
 /// <summary>
 /// Repository interface for Transaction entity operations
+/// Normalized schema: ID is BIGSERIAL (long), not UUID
 /// </summary>
 public interface ITransactionRepository
 {
     /// <summary>
-    /// Get transaction by unique identifier
+    /// Get transaction by unique identifier (BIGSERIAL ID as long)
     /// </summary>
-    /// <param name="id">Transaction identifier</param>
+    /// <param name="id">Transaction identifier (BIGSERIAL)</param>
     /// <returns>Transaction entity or null if not found</returns>
-    Task<Transaction?> GetByIdAsync(Guid id);
+    Task<Transaction?> GetByIdAsync(long id);
 
     /// <summary>
     /// Get all transactions for a file
