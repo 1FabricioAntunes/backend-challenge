@@ -1,10 +1,11 @@
 using System.Net;
 using System.Text.Json;
-using NUnit.Framework;
 using TransactionProcessor.Api.Models;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Domain.ValueObjects;
 using TransactionProcessor.Tests.Integration.Fixtures;
+using Xunit;
+using FluentAssertions;
 using FileEntity = TransactionProcessor.Domain.Entities.File;
 
 namespace TransactionProcessor.Tests.Integration.Endpoints;
@@ -13,40 +14,34 @@ namespace TransactionProcessor.Tests.Integration.Endpoints;
 /// Integration tests for file endpoints (GET /api/files/v1 and GET /api/files/v1/{id})
 /// Tests pagination, response metadata, error handling, and timestamp serialization
 /// </summary>
-[TestFixture]
-public class FileEndpointsIntegrationTests
+public class FileEndpointsIntegrationTests : IAsyncLifetime
 {
     private DatabaseFixture _databaseFixture = null!;
     private TestDataSeeder _seeder = null!;
     private HttpClient _httpClient = null!;
 
-    [OneTimeSetUp]
-    public async Task OneTimeSetUpAsync()
+    public async Task InitializeAsync()
     {
         _databaseFixture = new DatabaseFixture();
         await _databaseFixture.InitializeAsync();
         
         // Create HttpClient for making requests
         _httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+        
+        // Clear database and seed data for first test
+        await _databaseFixture.ClearDatabaseAsync();
+        _seeder = new TestDataSeeder(_databaseFixture.DbContext);
     }
 
-    [OneTimeTearDown]
-    public async Task OneTimeTearDownAsync()
+    public async Task DisposeAsync()
     {
         _httpClient?.Dispose();
         await _databaseFixture.DisposeAsync();
     }
 
-    [SetUp]
-    public async Task SetUpAsync()
-    {
-        await _databaseFixture.ClearDatabaseAsync();
-        _seeder = new TestDataSeeder(_databaseFixture.DbContext);
-    }
-
     #region GetFiles Pagination Tests
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithDefaultPagination_ReturnsFirstPage()
     {
         // Arrange
@@ -56,26 +51,21 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<FileDto>>(content, 
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var result = await DeserializeResponse<PagedResult<FileDto>>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.Not.Null);
-            Assert.That(result!.Page, Is.EqualTo(1));
-            Assert.That(result!.PageSize, Is.EqualTo(10));
-            Assert.That(result!.TotalCount, Is.EqualTo(25));
-            Assert.That(result!.Items.Count, Is.EqualTo(10));
-            Assert.That(result!.TotalPages, Is.EqualTo(3));
-            Assert.That(result!.HasPreviousPage, Is.False);
-            Assert.That(result!.HasNextPage, Is.True);
-        });
+        result.Should().NotBeNull();
+        result.Page.Should().Be(1);
+        result.PageSize.Should().Be(10);
+        result.TotalCount.Should().Be(25);
+        result.Items.Count.Should().Be(10);
+        result.TotalPages.Should().Be(3);
+        result.HasPreviousPage.Should().BeFalse();
+        result.HasNextPage.Should().BeTrue();
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithSecondPage_ReturnsCorrectMetadata()
     {
         // Arrange
@@ -85,19 +75,16 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync("/api/files/v1?page=2&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Page, Is.EqualTo(2));
-            Assert.That(result.Items.Count, Is.EqualTo(10));
-            Assert.That(result.HasPreviousPage, Is.True);
-            Assert.That(result.HasNextPage, Is.True);
-        });
+        result.Page.Should().Be(2);
+        result.Items.Count.Should().Be(10);
+        result.HasPreviousPage.Should().BeTrue();
+        result.HasNextPage.Should().BeTrue();
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithLastPage_ReturnsCorrectMetadata()
     {
         // Arrange
@@ -107,37 +94,31 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync("/api/files/v1?page=3&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Page, Is.EqualTo(3));
-            Assert.That(result.Items.Count, Is.EqualTo(5));
-            Assert.That(result.HasPreviousPage, Is.True);
-            Assert.That(result.HasNextPage, Is.False);
-        });
+        result.Page.Should().Be(3);
+        result.Items.Count.Should().Be(5);
+        result.HasPreviousPage.Should().BeTrue();
+        result.HasNextPage.Should().BeFalse();
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithEmptyDatabase_ReturnsEmptyList()
     {
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Items.Count, Is.Zero);
-            Assert.That(result.TotalCount, Is.Zero);
-            Assert.That(result.TotalPages, Is.EqualTo(0));
-        });
+        result.Items.Count.Should().Be(0);
+        result.TotalCount.Should().Be(0);
+        result.TotalPages.Should().Be(0);
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithCustomPageSize_ReturnsCorrectCount()
     {
         // Arrange
@@ -147,70 +128,64 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=25");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Items.Count, Is.EqualTo(25));
-            Assert.That(result.PageSize, Is.EqualTo(25));
-            Assert.That(result.TotalPages, Is.EqualTo(2));
-        });
+        result.Items.Count.Should().Be(25);
+        result.PageSize.Should().Be(25);
+        result.TotalPages.Should().Be(2);
     }
 
     #endregion
 
     #region Pagination Validation Tests
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithInvalidPageNumber_ReturnsBadRequest()
     {
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=0&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(error.Error.Code, Is.EqualTo("INVALID_PAGE_NUMBER"));
-            Assert.That(error.Error.StatusCode, Is.EqualTo(400));
-            Assert.That(error.Error.Message, Contains.Substring("Page"));
-        });
+        error.Error.Code.Should().Be("INVALID_PAGE_NUMBER");
+        error.Error.StatusCode.Should().Be(400);
+        error.Error.Message.Should().Contain("Page");
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithPageSizeTooLarge_ReturnsBadRequest()
     {
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=101");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.That(error.Error.Code, Is.EqualTo("INVALID_PAGE_SIZE"));
+        error.Error.Code.Should().Be("INVALID_PAGE_SIZE");
     }
 
-    [Test]
+    [Fact]
     public async Task GetFiles_WithPageSizeZero_ReturnsBadRequest()
     {
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=0");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.That(error.Error.Code, Is.EqualTo("INVALID_PAGE_SIZE"));
+        error.Error.Code.Should().Be("INVALID_PAGE_SIZE");
     }
 
     #endregion
 
     #region GetFileById Tests
 
-    [Test]
+    [Fact]
     public async Task GetFileById_WithValidId_ReturnsFileDetails()
     {
         // Arrange
@@ -223,19 +198,16 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync($"/api/files/v1/{createdFile.Id}");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var fileDto = await DeserializeResponse<FileDto>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(fileDto.Id, Is.EqualTo(createdFile.Id));
-            Assert.That(fileDto.FileName, Is.EqualTo("test_cnab.txt"));
-            Assert.That(fileDto.Status, Is.EqualTo(FileStatus.Processed.ToString()));
-            Assert.That(fileDto.TransactionCount, Is.EqualTo(5));
-        });
+        fileDto.Id.Should().Be(createdFile.Id);
+        fileDto.FileName.Should().Be("test_cnab.txt");
+        fileDto.Status.Should().Be(FileStatus.Processed.ToString());
+        fileDto.TransactionCount.Should().Be(5);
     }
 
-    [Test]
+    [Fact]
     public async Task GetFileById_WithMissingId_ReturnsNotFound()
     {
         // Arrange
@@ -245,39 +217,33 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync($"/api/files/v1/{nonExistentId}");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(error.Error.Code, Is.EqualTo("FILE_NOT_FOUND"));
-            Assert.That(error.Error.StatusCode, Is.EqualTo(404));
-            Assert.That(error.Error.Message, Contains.Substring("not found"));
-        });
+        error.Error.Code.Should().Be("FILE_NOT_FOUND");
+        error.Error.StatusCode.Should().Be(404);
+        error.Error.Message.Should().Contain("not found");
     }
 
-    [Test]
+    [Fact]
     public async Task GetFileById_WithEmptyGuid_ReturnsBadRequest()
     {
         // Act
         var response = await _httpClient.GetAsync($"/api/files/v1/{Guid.Empty}");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(error.Error.Code, Is.EqualTo("INVALID_FILE_ID"));
-            Assert.That(error.Error.StatusCode, Is.EqualTo(400));
-        });
+        error.Error.Code.Should().Be("INVALID_FILE_ID");
+        error.Error.StatusCode.Should().Be(400);
     }
 
     #endregion
 
     #region Timestamp Validation Tests
 
-    [Test]
+    [Fact]
     public async Task GetFiles_IncludesIso8601UtcTimestamps()
     {
         // Arrange
@@ -288,18 +254,15 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=10");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
         var fileDto = result.Items[0];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(fileDto.UploadedAt, Is.EqualTo(testTime));
-            Assert.That(fileDto.UploadedAt.Kind, Is.EqualTo(DateTimeKind.Utc));
-        });
+        fileDto.UploadedAt.Should().Be(testTime);
+        fileDto.UploadedAt.Kind.Should().Be(DateTimeKind.Utc);
     }
 
-    [Test]
+    [Fact]
     public async Task GetFileById_IncludesProcessedAtTimestamp()
     {
         // Arrange
@@ -315,20 +278,15 @@ public class FileEndpointsIntegrationTests
         var response = await _httpClient.GetAsync($"/api/files/v1/{file.Id}");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var fileDto = await DeserializeResponse<FileDto>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(fileDto.ProcessedAt, Is.Not.Null);
-            Assert.That(fileDto.ProcessedAt!.Value.Kind, Is.EqualTo(DateTimeKind.Utc));
-            Assert.That(
-                Math.Abs((fileDto.ProcessedAt!.Value - processedTime).TotalSeconds),
-                Is.LessThan(1));
-        });
+        fileDto.ProcessedAt.Should().NotBeNull();
+        fileDto.ProcessedAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        Math.Abs((fileDto.ProcessedAt!.Value - processedTime).TotalSeconds).Should().BeLessThan(1);
     }
 
-    [Test]
+    [Fact]
     public async Task GetFileById_WithoutProcessedAt_ReturnsNull()
     {
         // Arrange
@@ -339,33 +297,30 @@ public class FileEndpointsIntegrationTests
 
         // Assert
         var fileDto = await DeserializeResponse<FileDto>(response);
-        Assert.That(fileDto.ProcessedAt, Is.Null);
+        fileDto.ProcessedAt.Should().BeNull();
     }
 
     #endregion
 
     #region Error Response Serialization Tests
 
-    [Test]
+    [Fact]
     public async Task ErrorResponse_SerializesWithConsistentStructure()
     {
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?pageSize=0");
 
         // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var error = await DeserializeResponse<ErrorResponse>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(error.Error, Is.Not.Null);
-            Assert.That(error.Error.Code, Is.Not.Null.And.Not.Empty);
-            Assert.That(error.Error.Message, Is.Not.Null.And.Not.Empty);
-            Assert.That(error.Error.StatusCode, Is.EqualTo(400));
-        });
+        error.Error.Should().NotBeNull();
+        error.Error.Code.Should().NotBeNullOrEmpty();
+        error.Error.Message.Should().NotBeNullOrEmpty();
+        error.Error.StatusCode.Should().Be(400);
     }
 
-    [Test]
+    [Fact]
     public async Task FileNotFoundError_IncludesFileId()
     {
         // Arrange
@@ -376,14 +331,14 @@ public class FileEndpointsIntegrationTests
 
         // Assert
         var error = await DeserializeResponse<ErrorResponse>(response);
-        Assert.That(error.Error.Message, Contains.Substring(nonExistentId.ToString()));
+        error.Error.Message.Should().Contain(nonExistentId.ToString());
     }
 
     #endregion
 
     #region File Status Tests
 
-    [Test]
+    [Fact]
     public async Task GetFiles_IncludesAllFileStatuses()
     {
         // Arrange
@@ -399,17 +354,14 @@ public class FileEndpointsIntegrationTests
         var result = await DeserializeResponse<PagedResult<FileDto>>(response);
         var statuses = result.Items.Select(f => f.Status).Distinct().ToList();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(statuses.Count, Is.EqualTo(4));
-            Assert.That(statuses, Contains.Item(FileStatus.Uploaded.ToString()));
-            Assert.That(statuses, Contains.Item(FileStatus.Processing.ToString()));
-            Assert.That(statuses, Contains.Item(FileStatus.Processed.ToString()));
-            Assert.That(statuses, Contains.Item(FileStatus.Rejected.ToString()));
-        });
+        statuses.Should().HaveCount(4);
+        statuses.Should().Contain(FileStatus.Uploaded.ToString());
+        statuses.Should().Contain(FileStatus.Processing.ToString());
+        statuses.Should().Contain(FileStatus.Processed.ToString());
+        statuses.Should().Contain(FileStatus.Rejected.ToString());
     }
 
-    [Test]
+    [Fact]
     public async Task GetFileById_WithRejectedFile_IncludesErrorMessage()
     {
         // Arrange
@@ -424,11 +376,8 @@ public class FileEndpointsIntegrationTests
         // Assert
         var fileDto = await DeserializeResponse<FileDto>(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(fileDto.Status, Is.EqualTo(FileStatus.Rejected.ToString()));
-            Assert.That(fileDto.ErrorMessage, Is.EqualTo(errorMsg));
-        });
+        fileDto.Status.Should().Be(FileStatus.Rejected.ToString());
+        fileDto.ErrorMessage.Should().Be(errorMsg);
     }
 
     #endregion

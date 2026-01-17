@@ -21,6 +21,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<FileEntity> Files { get; set; } = null!;
 
     /// <summary>
+    /// Stores that receive transactions
+    /// </summary>
+    public DbSet<Store> Stores { get; set; } = null!;
+
+    /// <summary>
     /// Transactions parsed from CNAB files
     /// </summary>
     public DbSet<Transaction> Transactions { get; set; } = null!;
@@ -63,17 +68,24 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("Transactions");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Type)
-                .IsRequired()
-                .HasConversion<string>();
+                .IsRequired();
             entity.Property(e => e.Amount)
                 .IsRequired()
                 .HasPrecision(18, 2);
             entity.Property(e => e.OccurredAt)
                 .IsRequired()
                 .HasColumnType("timestamp with time zone");
-            entity.Property(e => e.Description)
+            entity.Property(e => e.OccurredAtTime)
+                .IsRequired();
+            entity.Property(e => e.CPF)
                 .IsRequired()
-                .HasMaxLength(500);
+                .HasMaxLength(11);
+            entity.Property(e => e.Card)
+                .IsRequired()
+                .HasMaxLength(12);
+            entity.Property(e => e.CreatedAt)
+                .IsRequired()
+                .HasColumnType("timestamp with time zone");
 
             // Relationship: Transaction belongs to File
             entity.HasOne(e => e.File)
@@ -81,9 +93,46 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.FileId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Relationship: Transaction belongs to Store
+            entity.HasOne(e => e.Store)
+                .WithMany(s => s.Transactions)
+                .HasForeignKey(e => e.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // Indexes for query performance
             entity.HasIndex(e => e.FileId);
+            entity.HasIndex(e => e.StoreId);
             entity.HasIndex(e => e.OccurredAt);
+            entity.HasIndex(e => new { e.StoreId, e.OccurredAt });
+        });
+
+        // Store entity configuration
+        modelBuilder.Entity<Store>(entity =>
+        {
+            entity.ToTable("Stores");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code)
+                .IsRequired()
+                .HasMaxLength(14);
+            entity.Property(e => e.Name)
+                .IsRequired()
+                .HasMaxLength(19);
+            entity.Property(e => e.Balance)
+                .IsRequired()
+                .HasPrecision(18, 2);
+            entity.Property(e => e.CreatedAt)
+                .IsRequired()
+                .HasColumnType("timestamp with time zone");
+            entity.Property(e => e.UpdatedAt)
+                .IsRequired()
+                .HasColumnType("timestamp with time zone");
+
+            // Unique constraint on store code
+            entity.HasIndex(e => e.Code)
+                .IsUnique();
+
+            // Indexes for query performance
+            entity.HasIndex(e => e.Name);
         });
     }
 
