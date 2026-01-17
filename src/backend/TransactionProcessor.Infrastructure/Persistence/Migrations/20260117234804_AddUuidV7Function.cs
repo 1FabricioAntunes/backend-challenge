@@ -211,6 +211,36 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
                     table.PrimaryKey("PK_transaction_types", x => x.type_code);
                 });
 
+            // Seed file_statuses lookup table
+            migrationBuilder.InsertData(
+                table: "file_statuses",
+                columns: new[] { "status_code", "Description", "is_terminal" },
+                values: new object[,]
+                {
+                    { "Uploaded", "File uploaded and queued for processing", false },
+                    { "Processing", "File is being processed", false },
+                    { "Processed", "File processed successfully", true },
+                    { "Rejected", "File rejected due to validation errors", true }
+                });
+
+            // Seed transaction_types lookup table (CNAB 240 specification)
+            // Reference: docs/database.md § CNAB Transaction Types
+            migrationBuilder.InsertData(
+                table: "transaction_types",
+                columns: new[] { "type_code", "Description", "Nature", "Sign" },
+                values: new object[,]
+                {
+                    { "1", "Débito", "Expense", "-" },
+                    { "2", "Boleto", "Income", "+" },
+                    { "3", "Depósito", "Income", "+" },
+                    { "4", "Aluguel", "Expense", "-" },
+                    { "5", "Empréstimo", "Expense", "-" },
+                    { "6", "Vendas", "Expense", "-" },
+                    { "7", "TED", "Expense", "-" },
+                    { "8", "DOC", "Expense", "-" },
+                    { "9", "Crédito", "Income", "+" }
+                });
+
             migrationBuilder.CreateIndex(
                 name: "idx_transactions_date",
                 table: "Transactions",
@@ -258,6 +288,23 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
                 principalTable: "Stores",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Restrict);
+
+            // Add foreign keys for lookup tables
+            migrationBuilder.AddForeignKey(
+                name: "fk_transactions_transaction_types",
+                table: "Transactions",
+                column: "transaction_type_code",
+                principalTable: "transaction_types",
+                principalColumn: "type_code",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_files_file_statuses",
+                table: "Files",
+                column: "StatusCode",
+                principalTable: "file_statuses",
+                principalColumn: "status_code",
+                onDelete: ReferentialAction.Restrict);
         }
 
         /// <inheritdoc />
@@ -273,6 +320,15 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
             migrationBuilder.DropForeignKey(
                 name: "fk_transactions_stores",
                 table: "Transactions");
+
+            // Drop foreign keys for lookup tables
+            migrationBuilder.DropForeignKey(
+                name: "fk_transactions_transaction_types",
+                table: "Transactions");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_files_file_statuses",
+                table: "Files");
 
             migrationBuilder.DropTable(
                 name: "file_statuses");
