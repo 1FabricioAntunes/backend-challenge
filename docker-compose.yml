@@ -23,8 +23,36 @@ services:
     networks:
       - transactionprocessor-network
 
+  # LocalStack - AWS services emulation (S3, SQS, Secrets Manager, Cognito)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,secretsmanager,cognito-idp
+      - AWS_DEFAULT_REGION=us-east-1
+      - DEBUG=1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      # Auto-run init scripts when LocalStack is ready
+      - ./src/infra/localstack-init:/etc/localstack/init/ready.d
+      # Optional, enables some advanced emulation features
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
 volumes:
   postgres_data:
+    driver: local
+  localstack_data:
     driver: local
 
 networks:
