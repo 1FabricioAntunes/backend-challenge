@@ -83,7 +83,7 @@ public class FileProcessingServiceIntegrationTests
         {
             Id = fileId,
             FileName = fileName,
-            Status = FileStatus.Processed,
+            StatusCode = FileStatusCode.Processed,
             UploadedAt = DateTime.UtcNow
         };
 
@@ -114,7 +114,7 @@ public class FileProcessingServiceIntegrationTests
         {
             Id = fileId,
             FileName = fileName,
-            Status = FileStatus.Uploaded,
+            StatusCode = FileStatusCode.Uploaded,
             UploadedAt = DateTime.UtcNow
         };
 
@@ -148,7 +148,7 @@ public class FileProcessingServiceIntegrationTests
 
         // Verify file was marked as Rejected
         _fileRepositoryMock.Verify(
-            x => x.UpdateAsync(It.Is<FileEntity>(f => f.Status == FileStatus.Rejected)),
+            x => x.UpdateAsync(It.Is<FileEntity>(f => f.StatusCode == FileStatusCode.Rejected)),
             Times.AtLeastOnce);
     }
 
@@ -165,7 +165,7 @@ public class FileProcessingServiceIntegrationTests
         {
             Id = fileId,
             FileName = fileName,
-            Status = FileStatus.Uploaded,
+            StatusCode = FileStatusCode.Uploaded,
             UploadedAt = DateTime.UtcNow
         };
 
@@ -225,7 +225,7 @@ public class FileProcessingServiceIntegrationTests
 
         // Verify file status was updated to Processed
         _fileRepositoryMock.Verify(
-            x => x.UpdateAsync(It.Is<FileEntity>(f => f.Status == FileStatus.Processed)),
+            x => x.UpdateAsync(It.Is<FileEntity>(f => f.StatusCode == FileStatusCode.Processed)),
             Times.AtLeastOnce);
     }
 
@@ -242,7 +242,7 @@ public class FileProcessingServiceIntegrationTests
         {
             Id = fileId,
             FileName = fileName,
-            Status = FileStatus.Uploaded,
+            StatusCode = FileStatusCode.Uploaded,
             UploadedAt = DateTime.UtcNow
         };
 
@@ -264,7 +264,7 @@ public class FileProcessingServiceIntegrationTests
 
         // Verify file was marked as Rejected
         _fileRepositoryMock.Verify(
-            x => x.UpdateAsync(It.Is<FileEntity>(f => f.Status == FileStatus.Rejected)),
+            x => x.UpdateAsync(It.Is<FileEntity>(f => f.StatusCode == FileStatusCode.Rejected)),
             Times.AtLeastOnce);
     }
 
@@ -281,7 +281,7 @@ public class FileProcessingServiceIntegrationTests
         {
             Id = fileId,
             FileName = fileName,
-            Status = FileStatus.Uploaded,
+            StatusCode = FileStatusCode.Uploaded,
             UploadedAt = DateTime.UtcNow
         };
 

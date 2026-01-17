@@ -38,7 +38,7 @@ public class GetFileByIdQueryHandler : IRequestHandler<GetFileByIdQuery, FileDto
             {
                 Id = f.Id,
                 FileName = f.FileName,
-                Status = f.Status.ToString(),
+                Status = f.StatusCode,
                 UploadedAt = f.UploadedAt,
                 ProcessedAt = f.ProcessedAt,
                 TransactionCount = f.Transactions.Count(),

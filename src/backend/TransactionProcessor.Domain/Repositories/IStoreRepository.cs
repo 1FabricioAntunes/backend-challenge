@@ -22,6 +22,14 @@ public interface IStoreRepository
     Task<Store?> GetByCodeAsync(string code);
 
     /// <summary>
+    /// Get store by composite key (normalized schema)
+    /// </summary>
+    /// <param name="name">Store name</param>
+    /// <param name="ownerName">Store owner name</param>
+    /// <returns>Store entity or null if not found</returns>
+    Task<Store?> GetByNameAndOwnerAsync(string name, string ownerName);
+
+    /// <summary>
     /// Get all stores
     /// </summary>
     /// <returns>Collection of all stores</returns>

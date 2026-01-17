@@ -191,7 +191,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
         // Arrange
         var createdFile = await _seeder.CreateFileAsync(
             fileName: "test_cnab.txt",
-            status: FileStatus.Processed,
+            statusCode: FileStatusCode.Processed,
             transactionCount: 5);
 
         // Act
@@ -203,7 +203,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
 
         fileDto.Id.Should().Be(createdFile.Id);
         fileDto.FileName.Should().Be("test_cnab.txt");
-        fileDto.Status.Should().Be(FileStatus.Processed.ToString());
+        fileDto.Status.Should().Be(FileStatusCode.Processed);
         fileDto.TransactionCount.Should().Be(5);
     }
 
@@ -248,7 +248,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
     {
         // Arrange
         var testTime = new DateTime(2024, 1, 15, 10, 30, 45, DateTimeKind.Utc);
-        await _seeder.CreateFileAsync(uploadedAt: testTime, status: FileStatus.Uploaded);
+        await _seeder.CreateFileAsync(uploadedAt: testTime, statusCode: FileStatusCode.Uploaded);
 
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=10");
@@ -270,7 +270,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
         var processedTime = DateTime.UtcNow;
         
         var file = await _seeder.CreateFileAsync(
-            status: FileStatus.Processed,
+            statusCode: FileStatusCode.Processed,
             uploadedAt: uploadedTime,
             processedAt: processedTime);
 
@@ -290,7 +290,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
     public async Task GetFileById_WithoutProcessedAt_ReturnsNull()
     {
         // Arrange
-        var file = await _seeder.CreateFileAsync(status: FileStatus.Uploaded);
+        var file = await _seeder.CreateFileAsync(statusCode: FileStatusCode.Uploaded);
 
         // Act
         var response = await _httpClient.GetAsync($"/api/files/v1/{file.Id}");
@@ -342,10 +342,10 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
     public async Task GetFiles_IncludesAllFileStatuses()
     {
         // Arrange
-        await _seeder.CreateFileAsync(fileName: "uploaded.txt", status: FileStatus.Uploaded);
-        await _seeder.CreateFileAsync(fileName: "processing.txt", status: FileStatus.Processing);
-        await _seeder.CreateFileAsync(fileName: "processed.txt", status: FileStatus.Processed);
-        await _seeder.CreateFileAsync(fileName: "rejected.txt", status: FileStatus.Rejected);
+        await _seeder.CreateFileAsync(fileName: "uploaded.txt", statusCode: FileStatusCode.Uploaded);
+        await _seeder.CreateFileAsync(fileName: "processing.txt", statusCode: FileStatusCode.Processing);
+        await _seeder.CreateFileAsync(fileName: "processed.txt", statusCode: FileStatusCode.Processed);
+        await _seeder.CreateFileAsync(fileName: "rejected.txt", statusCode: FileStatusCode.Rejected);
 
         // Act
         var response = await _httpClient.GetAsync("/api/files/v1?page=1&pageSize=10");
@@ -355,10 +355,10 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
         var statuses = result.Items.Select(f => f.Status).Distinct().ToList();
 
         statuses.Should().HaveCount(4);
-        statuses.Should().Contain(FileStatus.Uploaded.ToString());
-        statuses.Should().Contain(FileStatus.Processing.ToString());
-        statuses.Should().Contain(FileStatus.Processed.ToString());
-        statuses.Should().Contain(FileStatus.Rejected.ToString());
+        statuses.Should().Contain(FileStatusCode.Uploaded);
+        statuses.Should().Contain(FileStatusCode.Processing);
+        statuses.Should().Contain(FileStatusCode.Processed);
+        statuses.Should().Contain(FileStatusCode.Rejected);
     }
 
     [Fact]
@@ -367,7 +367,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
         // Arrange
         var errorMsg = "Invalid CNAB format: missing required fields";
         var file = await _seeder.CreateFileAsync(
-            status: FileStatus.Rejected,
+            statusCode: FileStatusCode.Rejected,
             errorMessage: errorMsg);
 
         // Act
@@ -376,7 +376,7 @@ public class FileEndpointsIntegrationTests : IAsyncLifetime
         // Assert
         var fileDto = await DeserializeResponse<FileDto>(response);
 
-        fileDto.Status.Should().Be(FileStatus.Rejected.ToString());
+        fileDto.Status.Should().Be(FileStatusCode.Rejected);
         fileDto.ErrorMessage.Should().Be(errorMsg);
     }
 

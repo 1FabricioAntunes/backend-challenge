@@ -33,29 +33,31 @@ public class TestDataSeeder
         {
             var fileStatus = (i % 4) switch
             {
-                0 => FileStatus.Uploaded,
-                1 => FileStatus.Processing,
-                2 => FileStatus.Processed,
-                _ => FileStatus.Rejected
+                0 => FileStatusCode.Uploaded,
+                1 => FileStatusCode.Processing,
+                2 => FileStatusCode.Processed,
+                _ => FileStatusCode.Rejected
             };
 
             var file = new FileEntity
             {
                 Id = Guid.NewGuid(),
                 FileName = $"test_file_{i + 1:D3}.txt",
-                Status = fileStatus,
+                StatusCode = fileStatus,
+                FileSize = 1024 + i * 100,
+                S3Key = $"cnab/test_file_{i + 1:D3}.txt",
                 UploadedAt = now.AddHours(-i),
-                ProcessedAt = fileStatus is FileStatus.Processed or FileStatus.Rejected
+                ProcessedAt = fileStatus is FileStatusCode.Processed or FileStatusCode.Rejected
                     ? now.AddHours(-i + 1)
                     : null,
-                ErrorMessage = fileStatus == FileStatus.Rejected
+                ErrorMessage = fileStatus == FileStatusCode.Rejected
                     ? "Invalid CNAB format: missing required fields"
                     : null,
                 Transactions = new List<Transaction>()
             };
 
             // Add transactions for processed files
-            if (fileStatus == FileStatus.Processed)
+            if (fileStatus == FileStatusCode.Processed)
             {
                 file.Transactions = CreateTransactions(file.Id, 5);
             }
@@ -74,7 +76,7 @@ public class TestDataSeeder
     /// </summary>
     public async Task<FileEntity> CreateFileAsync(
         string fileName = "test_file.txt",
-        FileStatus status = FileStatus.Uploaded,
+        string statusCode = FileStatusCode.Uploaded,
         DateTime? uploadedAt = null,
         DateTime? processedAt = null,
         string? errorMessage = null,
@@ -84,7 +86,9 @@ public class TestDataSeeder
         {
             Id = Guid.NewGuid(),
             FileName = fileName,
-            Status = status,
+            StatusCode = statusCode,
+            FileSize = 1024,
+            S3Key = $"cnab/{Guid.NewGuid():N}.txt",
             UploadedAt = uploadedAt ?? DateTime.UtcNow,
             ProcessedAt = processedAt,
             ErrorMessage = errorMessage,
@@ -107,17 +111,19 @@ public class TestDataSeeder
         var transactions = new List<Transaction>();
         for (int i = 0; i < count; i++)
         {
+            var now = DateTime.UtcNow;
             transactions.Add(new Transaction
             {
-                Id = Guid.NewGuid(),
                 FileId = fileId,
-                Type = 1 + (i % 9), // Types 1-9
+                StoreId = Guid.NewGuid(),
+                TransactionTypeCode = (1 + (i % 9)).ToString(), // Types 1-9 as strings
                 Amount = (decimal)(100.00 + i * 50.00),
-                OccurredAt = DateTime.UtcNow.AddMinutes(-i),
-                OccurredAtTime = new TimeSpan(10, 30, i % 60),
+                TransactionDate = DateOnly.FromDateTime(now.AddMinutes(-i)),
+                TransactionTime = TimeOnly.FromDateTime(now),
                 CPF = "12345678901",
                 Card = "123456789012",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             });
         }
         return transactions;

@@ -6,45 +6,51 @@ namespace TransactionProcessor.Domain.Entities;
 /// <summary>
 /// Represents a single CNAB transaction from a file.
 /// Belongs to File aggregate and references a Store.
+/// Immutable once created; transactions are never updated.
 /// </summary>
 public class Transaction
 {
     /// <summary>
-    /// Unique identifier for the transaction.
+    /// Unique identifier for the transaction (BIGSERIAL).
+    /// Uses BIGSERIAL (not UUID) for optimized B-tree on high-write workloads.
     /// </summary>
-    public Guid Id { get; set; }
+    public long Id { get; set; }
 
     /// <summary>
-    /// File this transaction belongs to.
+    /// File this transaction belongs to (FK to Files table).
     /// </summary>
     public Guid FileId { get; set; }
 
     /// <summary>
-    /// Store that this transaction affects.
+    /// Store that this transaction affects (FK to Stores table).
     /// </summary>
     public Guid StoreId { get; set; }
 
     /// <summary>
-    /// Transaction type (1-9) from CNAB.
-    /// Determines if credit or debit.
+    /// Transaction type code (FK to transaction_types lookup table).
+    /// Values 1-9 from CNAB specification.
+    /// Determines whether transaction is credit or debit.
     /// </summary>
-    public int Type { get; set; }
+    public string TransactionTypeCode { get; set; } = string.Empty;
 
     /// <summary>
-    /// Transaction amount in cents (divided by 100 for actual value).
-    /// Always stored as positive; sign determined by Type.
+    /// Transaction amount in cents (divide by 100 for actual BRL value).
+    /// Always stored as positive; sign determined by transaction type.
+    /// Precision: 18,2 (supports up to 9,999,999.99 BRL).
     /// </summary>
     public decimal Amount { get; set; }
 
     /// <summary>
-    /// Date when transaction occurred (from CNAB file).
+    /// Date when transaction occurred (DATE type, no time).
+    /// Extracted from CNAB date field.
     /// </summary>
-    public DateTime OccurredAt { get; set; }
+    public DateOnly TransactionDate { get; set; }
 
     /// <summary>
-    /// Time when transaction occurred (from CNAB file).
+    /// Time when transaction occurred (TIME type).
+    /// Extracted from CNAB time field.
     /// </summary>
-    public TimeSpan OccurredAtTime { get; set; }
+    public TimeOnly TransactionTime { get; set; }
 
     /// <summary>
     /// Recipient CPF from CNAB (11 digits, may include formatting).
@@ -57,35 +63,62 @@ public class Transaction
     public string Card { get; set; } = string.Empty;
 
     /// <summary>
-    /// Timestamp when transaction was persisted.
+    /// Timestamp when transaction was persisted (UTC).
     /// </summary>
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>
+    /// Timestamp when transaction was last updated (UTC).
+    /// </summary>
+    public DateTime UpdatedAt { get; set; }
+
     // Navigation properties
     /// <summary>
-    /// The file this transaction came from.
+    /// The file this transaction came from (navigational property).
     /// </summary>
     public FileEntity? File { get; set; }
 
     /// <summary>
-    /// The store this transaction affects.
+    /// The store this transaction affects (navigational property).
     /// </summary>
     public Store? Store { get; set; }
 
     /// <summary>
-    /// Calculates the signed amount based on transaction type.
-    /// Positive for inflow (types 1,4,5,6,7,8), negative for outflow (types 2,3,9).
+    /// Calculates the signed amount based on transaction type from database lookup.
+    /// 
+    /// NOTE: Sign is retrieved from the transaction_types lookup table, not hardcoded.
+    /// This makes the code resilient to database changes - if the sign of a type changes,
+    /// the code automatically adapts without recompilation.
     /// </summary>
-    /// <returns>Signed amount (Amount/100 with appropriate sign)</returns>
+    /// <param name="transactionType">TransactionType entity with sign from database</param>
+    /// <returns>Signed amount in BRL (Amount/100 with appropriate sign from database)</returns>
+    /// <remarks>
+    /// Example: Amount=10000, TransactionType.Sign="-" → GetSignedAmount(type)=-100 BRL (debit)
+    ///         Amount=10000, TransactionType.Sign="+" → GetSignedAmount(type)=+100 BRL (credit)
+    /// 
+    /// The sign value comes from the database transaction_types.sign column, not hardcoded logic.
+    /// </remarks>
+    public decimal GetSignedAmount(TransactionType transactionType)
+    {
+        if (transactionType == null)
+            throw new ArgumentNullException(nameof(transactionType));
+
+        var signMultiplier = transactionType.GetSignMultiplier();
+        return signMultiplier * (Amount / 100m);
+    }
+
+    /// <summary>
+    /// Legacy method - DEPRECATED. Do NOT use. Kept for compilation compatibility only.
+    /// 
+    /// This method used hardcoded logic which breaks if database changes.
+    /// Always use GetSignedAmount(TransactionType) instead.
+    /// </summary>
+    [Obsolete("Hardcoded sign logic is unreliable. Use GetSignedAmount(TransactionType) to ensure database-driven sign values are used", error: true)]
     public decimal GetSignedAmount()
     {
-        // Inflow types (1,4,5,6,7,8): positive
-        // Outflow types (2,3,9): negative
-        if (Type is 1 or 4 or 5 or 6 or 7 or 8)
-            return Amount / 100m;
-        if (Type is 2 or 3 or 9)
-            return -(Amount / 100m);
-        
-        throw new InvalidOperationException($"Invalid transaction type: {Type}");
+        throw new NotSupportedException(
+            "GetSignedAmount() without TransactionType parameter is not supported. " +
+            "Hardcoded logic cannot adapt if database changes. " +
+            "Use GetSignedAmount(TransactionType) with entity from database.");
     }
 }

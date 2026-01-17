@@ -54,7 +54,7 @@ public class GetFilesQueryHandler : IRequestHandler<GetFilesQuery, PagedResult<F
             {
                 Id = f.Id,
                 FileName = f.FileName,
-                Status = f.Status.ToString(),
+                Status = f.StatusCode,
                 UploadedAt = f.UploadedAt,
                 ProcessedAt = f.ProcessedAt,
                 TransactionCount = f.Transactions.Count(),

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TransactionProcessor.Domain.Repositories;
+using TransactionProcessor.Domain.ValueObjects;
 using TransactionProcessor.Infrastructure.Persistence;
 using FileEntity = TransactionProcessor.Domain.Entities.File;
 
@@ -8,6 +9,8 @@ namespace TransactionProcessor.Infrastructure.Repositories;
 /// <summary>
 /// Repository implementation for File aggregate using Entity Framework Core
 /// Implements IFileRepository following Repository pattern
+/// Optimized for normalized schema with statusCode FK
+/// Uses FileStatusCode constants for resilient status filtering
 /// </summary>
 public class FileRepository : IFileRepository
 {
@@ -43,12 +46,13 @@ public class FileRepository : IFileRepository
 
     /// <summary>
     /// Get files with status = Uploaded (pending processing)
+    /// Uses FileStatusCodes enum for resilient status filtering
     /// </summary>
     /// <returns>Collection of uploaded files awaiting processing</returns>
     public async Task<IEnumerable<FileEntity>> GetPendingFilesAsync()
     {
         return await _context.Files
-            .Where(f => f.Status == Domain.ValueObjects.FileStatus.Uploaded)
+            .Where(f => f.StatusCode == FileStatusCode.Uploaded)
             .OrderBy(f => f.UploadedAt)
             .ToListAsync();
     }
