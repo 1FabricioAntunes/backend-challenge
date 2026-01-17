@@ -1,10 +1,11 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using TransactionProcessor.Application.DTOs;
-using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Application.Models;
 using TransactionProcessor.Domain.Entities;
+using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Domain.ValueObjects;
 using TransactionProcessor.Infrastructure.Persistence;
@@ -63,6 +64,7 @@ public class FileProcessingService : IFileProcessingService
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var logScope = _logger.BeginScope(new Dictionary<string, object>
         {
             { "CorrelationId", correlationId },
@@ -122,7 +124,9 @@ public class FileProcessingService : IFileProcessingService
                 file.ProcessedAt = DateTime.UtcNow;
                 await _fileRepository.UpdateAsync(file);
                 
+                stopwatch.Stop();
                 _logger.LogWarning("File validation failed. Marking as Rejected. Errors: {@ValidationErrors}", parseResult.Errors);
+                _logger.LogInformation("Metrics: durationMs={DurationMs}, validationErrors={ErrorCount}", stopwatch.ElapsedMilliseconds, parseResult.Errors.Count);
                 return result;
             }
 
@@ -221,8 +225,10 @@ public class FileProcessingService : IFileProcessingService
                 await dbTransaction.CommitAsync(cancellationToken);
                 _logger.LogInformation("Database transaction committed successfully");
 
+                stopwatch.Stop();
                 result.Success = true;
                 _logger.LogInformation("File processing completed successfully");
+                _logger.LogInformation("Metrics: durationMs={DurationMs}, transactionsInserted={Transactions}, storesUpserted={Stores}", stopwatch.ElapsedMilliseconds, result.TransactionsInserted, result.StoresUpserted);
                 return result;
             }
             catch (Exception)
@@ -244,26 +250,27 @@ public class FileProcessingService : IFileProcessingService
         {
             result.Success = false;
             result.ErrorMessage = $"Processing error: {ex.Message}";
-            
+            stopwatch.Stop();
+
             _logger.LogError(ex, "Unexpected error during file processing. FileId: {FileId}", fileId);
-            
-            // Try to mark file as Rejected with error details
+
+            // Try to publish detailed error info into file record without changing terminal status
             try
             {
                 var file = await _fileRepository.GetByIdAsync(fileId);
                 if (file != null && file.Status != FileStatus.Processed)
                 {
-                    file.Status = FileStatus.Rejected;
                     file.ErrorMessage = $"Processing error: {ex.Message}";
-                    file.ProcessedAt = DateTime.UtcNow;
                     await _fileRepository.UpdateAsync(file);
-                    _logger.LogInformation("File marked as Rejected due to processing error");
+                    _logger.LogInformation("Recorded processing error details on file while leaving status for retry");
                 }
             }
             catch (Exception updateEx)
             {
                 _logger.LogError(updateEx, "Failed to update file status after processing error");
             }
+
+            _logger.LogInformation("Metrics: durationMs={DurationMs}, errorType=processing", stopwatch.ElapsedMilliseconds);
 
             // Re-throw for HostedService to handle (leave message for retry on processing errors)
             throw;

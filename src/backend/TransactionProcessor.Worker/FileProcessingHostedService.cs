@@ -40,6 +40,11 @@ public class FileProcessingHostedService : BackgroundService
     /// </summary>
     private const int VisibilityTimeoutSeconds = 300;
 
+    /// <summary>
+    /// Backoff applied after transient processing errors to avoid hot looping.
+    /// </summary>
+    private const int TransientErrorDelayMs = 1000;
+
     public FileProcessingHostedService(
         IMessageQueueService queueService,
         IFileProcessingService fileProcessingService,
@@ -133,6 +138,7 @@ public class FileProcessingHostedService : BackgroundService
             {
                 _logger.LogError(ex, "Failed to process message {MessageId}, message will be retried", message.MessageId);
                 // Message will be redelivered after visibility timeout expires
+                await Task.Delay(TransientErrorDelayMs, cancellationToken);
             }
 
             // Small delay between processing messages
