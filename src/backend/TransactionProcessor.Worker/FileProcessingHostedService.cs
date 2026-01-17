@@ -112,13 +112,22 @@ public class FileProcessingHostedService : BackgroundService
         // Process each message
         foreach (var message in messageList)
         {
+            var shouldDeleteMessage = false;
+            
             try
             {
-                await ProcessMessageAsync(message, cancellationToken);
+                shouldDeleteMessage = await ProcessMessageAsync(message, cancellationToken);
                 
-                // Delete message after successful processing
-                await _queueService.DeleteMessageAsync(message.ReceiptHandle, cancellationToken);
-                _logger.LogInformation("Message deleted from queue: {MessageId}", message.MessageId);
+                // Delete message if processing succeeded or validation failed
+                if (shouldDeleteMessage)
+                {
+                    await _queueService.DeleteMessageAsync(message.ReceiptHandle, cancellationToken);
+                    _logger.LogInformation("Message deleted from queue: {MessageId}", message.MessageId);
+                }
+                else
+                {
+                    _logger.LogWarning("Message not deleted, will be retried: {MessageId}", message.MessageId);
+                }
             }
             catch (Exception ex)
             {
@@ -137,14 +146,15 @@ public class FileProcessingHostedService : BackgroundService
     /// Processes a single message.
     /// Extracts file processing details and orchestrates file processing.
     /// </summary>
-    private async Task ProcessMessageAsync(
+    /// <returns>True if message should be deleted (success or validation error), False if should retry</returns>
+    private async Task<bool> ProcessMessageAsync(
         TransactionProcessor.Domain.Interfaces.QueueMessage<FileProcessingMessageDto> message,
         CancellationToken cancellationToken)
     {
         if (message?.Body == null)
         {
             _logger.LogWarning("Received message with null body: {MessageId}", message?.MessageId);
-            return;
+            return true; // Delete invalid messages
         }
 
         var msgData = message.Body;
@@ -182,6 +192,7 @@ public class FileProcessingHostedService : BackgroundService
                     "File processing succeeded: {StoresUpserted} stores, {TransactionsInserted} transactions",
                     result.StoresUpserted,
                     result.TransactionsInserted);
+                return true; // Delete message on success
             }
             else
             {
@@ -190,25 +201,25 @@ public class FileProcessingHostedService : BackgroundService
                     result.ErrorMessage,
                     result.ValidationErrors);
                 
-                // For validation errors, we still delete the message (not retryable)
-                // For processing errors, exception will be thrown and message will retry
+                // For validation errors, delete the message (not retryable)
                 if (result.ValidationErrors.Count > 0)
                 {
                     _logger.LogInformation("Validation error - message will be deleted and not retried");
-                    return; // Success from SQS perspective - don't retry validation errors
+                    return true; // Delete message - validation errors shouldn't retry
                 }
 
-                // Processing error - throw to trigger retry
-                throw new InvalidOperationException($"File processing failed: {result.ErrorMessage}");
+                // Processing error without validation errors - shouldn't reach here due to exception
+                _logger.LogWarning("Processing error without exception thrown - leaving message for retry");
+                return false; // Don't delete - let it retry
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Exception processing file {FileName}. Message will be retried on next attempt",
+                "Exception processing file {FileName}. Message will be retried",
                 msgData.FileName);
-            throw;
+            return false; // Don't delete - processing error should retry
         }
     }
 

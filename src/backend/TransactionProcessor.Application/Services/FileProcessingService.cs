@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Domain.Interfaces;
@@ -6,6 +7,7 @@ using TransactionProcessor.Application.Models;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Domain.ValueObjects;
+using TransactionProcessor.Infrastructure.Persistence;
 
 namespace TransactionProcessor.Application.Services;
 
@@ -20,6 +22,7 @@ public class FileProcessingService : IFileProcessingService
     private readonly ITransactionRepository _transactionRepository;
     private readonly IFileStorageService _storageService;
     private readonly ICNABParser _parser;
+    private readonly ApplicationDbContext _dbContext;
     private readonly ILogger<FileProcessingService> _logger;
 
     public FileProcessingService(
@@ -28,6 +31,7 @@ public class FileProcessingService : IFileProcessingService
         ITransactionRepository transactionRepository,
         IFileStorageService storageService,
         ICNABParser parser,
+        ApplicationDbContext dbContext,
         ILogger<FileProcessingService> logger)
     {
         _fileRepository = fileRepository ?? throw new ArgumentNullException(nameof(fileRepository));
@@ -35,6 +39,7 @@ public class FileProcessingService : IFileProcessingService
         _transactionRepository = transactionRepository ?? throw new ArgumentNullException(nameof(transactionRepository));
         _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -121,25 +126,27 @@ public class FileProcessingService : IFileProcessingService
                 return result;
             }
 
-            // Step 4: Check idempotency - verify no transactions already exist for this file/store combo
-            foreach (var line in parseResult.ValidLines.Take(1)) // Just check first store as sample
+            // Step 4: Check idempotency - verify no transactions already exist for this file
+            var existingTransactions = await _transactionRepository.GetByFileIdAsync(fileId);
+            if (existingTransactions.Any())
             {
-                var existing = await _transactionRepository.GetFirstByFileAndStoreAsync(
-                    fileId,
-                    Guid.NewGuid()); // Would be actual store lookup
-                if (existing != null)
-                {
-                    _logger.LogInformation("Transactions already exist for this file. Skipping processing (idempotent)");
-                    result.Success = true;
-                    result.ErrorMessage = null;
-                    return result;
-                }
+                _logger.LogInformation("Transactions already exist for this file. Skipping processing (idempotent)");
+                result.Success = true;
+                result.ErrorMessage = null;
+                result.TransactionsInserted = existingTransactions.Count();
+                return result;
             }
 
-            // Step 5: Process transactions in a transaction
-            _logger.LogInformation("Starting transaction for file processing");
-            var stores = new Dictionary<string, Store>();
-            var transactions = new List<Transaction>();
+            // Step 5: Process transactions in a database transaction
+            _logger.LogInformation("Starting database transaction for file processing");
+            IDbContextTransaction? dbTransaction = null;
+            
+            try
+            {
+                dbTransaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+                
+                var stores = new Dictionary<string, Store>();
+                var transactions = new List<Transaction>();
 
             // Group lines by store and create stores
             var linesByStoreName = parseResult.ValidLines.GroupBy(l => l.StoreName);
@@ -191,44 +198,66 @@ public class FileProcessingService : IFileProcessingService
                 stores[storeCode] = store;
             }
 
-            // Upsert stores
-            foreach (var store in stores.Values)
-            {
-                await _storeRepository.UpsertAsync(store);
-                result.StoresUpserted++;
+                // Upsert stores
+                foreach (var store in stores.Values)
+                {
+                    await _storeRepository.UpsertAsync(store);
+                    result.StoresUpserted++;
+                }
+
+                // Insert transactions in batch
+                await _transactionRepository.AddRangeAsync(transactions);
+                result.TransactionsInserted = transactions.Count;
+
+                _logger.LogInformation("Persisted {StoreCount} stores and {TransactionCount} transactions",
+                    result.StoresUpserted, result.TransactionsInserted);
+
+                // Step 6: Mark file as Processed
+                file.Status = FileStatus.Processed;
+                file.ProcessedAt = DateTime.UtcNow;
+                await _fileRepository.UpdateAsync(file);
+
+                // Commit transaction - all or nothing
+                await dbTransaction.CommitAsync(cancellationToken);
+                _logger.LogInformation("Database transaction committed successfully");
+
+                result.Success = true;
+                _logger.LogInformation("File processing completed successfully");
+                return result;
             }
-
-            // Insert transactions
-            await _transactionRepository.AddRangeAsync(transactions);
-            result.TransactionsInserted = transactions.Count;
-
-            _logger.LogInformation("Persisted {StoreCount} stores and {TransactionCount} transactions",
-                result.StoresUpserted, result.TransactionsInserted);
-
-            // Step 6: Mark file as Processed
-            file.Status = FileStatus.Processed;
-            file.ProcessedAt = DateTime.UtcNow;
-            await _fileRepository.UpdateAsync(file);
-
-            result.Success = true;
-            _logger.LogInformation("File processing completed successfully");
-            return result;
+            catch (Exception)
+            {
+                // Rollback transaction on any error
+                if (dbTransaction != null)
+                {
+                    _logger.LogWarning("Rolling back database transaction due to error");
+                    await dbTransaction.RollbackAsync(cancellationToken);
+                }
+                throw; // Re-throw to be caught by outer exception handler
+            }
+            finally
+            {
+                dbTransaction?.Dispose();
+            }
         }
         catch (Exception ex)
         {
             result.Success = false;
             result.ErrorMessage = $"Processing error: {ex.Message}";
             
-            // Try to mark file as Rejected
+            _logger.LogError(ex, "Unexpected error during file processing. FileId: {FileId}", fileId);
+            
+            // Try to mark file as Rejected with error details
             try
             {
                 var file = await _fileRepository.GetByIdAsync(fileId);
-                if (file != null)
+                if (file != null && file.Status != FileStatus.Processed)
                 {
                     file.Status = FileStatus.Rejected;
-                    file.ErrorMessage = result.ErrorMessage;
+                    file.ErrorMessage = $"Processing error: {ex.Message}";
                     file.ProcessedAt = DateTime.UtcNow;
                     await _fileRepository.UpdateAsync(file);
+                    _logger.LogInformation("File marked as Rejected due to processing error");
                 }
             }
             catch (Exception updateEx)
@@ -236,8 +265,8 @@ public class FileProcessingService : IFileProcessingService
                 _logger.LogError(updateEx, "Failed to update file status after processing error");
             }
 
-            _logger.LogError(ex, "Unexpected error during file processing");
-            return result;
+            // Re-throw for HostedService to handle (leave message for retry on processing errors)
+            throw;
         }
     }
 }
