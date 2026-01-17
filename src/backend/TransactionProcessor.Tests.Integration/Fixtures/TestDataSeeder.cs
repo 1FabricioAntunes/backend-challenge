@@ -111,10 +111,13 @@ public class TestDataSeeder
             {
                 Id = Guid.NewGuid(),
                 FileId = fileId,
-                Type = (TransactionType)(i % 3),
+                Type = 1 + (i % 9), // Types 1-9
                 Amount = (decimal)(100.00 + i * 50.00),
                 OccurredAt = DateTime.UtcNow.AddMinutes(-i),
-                Description = $"Test transaction {i + 1}"
+                OccurredAtTime = new TimeSpan(10, 30, i % 60),
+                CPF = "12345678901",
+                Card = "123456789012",
+                CreatedAt = DateTime.UtcNow
             });
         }
         return transactions;
