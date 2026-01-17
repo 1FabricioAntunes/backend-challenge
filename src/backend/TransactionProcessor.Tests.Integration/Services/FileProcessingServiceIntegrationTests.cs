@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TransactionProcessor.Application.DTOs;
@@ -8,6 +9,7 @@ using TransactionProcessor.Application.Services;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Domain.ValueObjects;
+using TransactionProcessor.Infrastructure.Persistence;
 using Xunit;
 using FileEntity = TransactionProcessor.Domain.Entities.File;
 
@@ -30,12 +32,20 @@ public class FileProcessingServiceIntegrationTests
 
     public FileProcessingServiceIntegrationTests()
     {
+        // Create in-memory database for tests
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        
+        var dbContext = new ApplicationDbContext(options);
+        
         _service = new FileProcessingService(
             _fileRepositoryMock.Object,
             _storeRepositoryMock.Object,
             _transactionRepositoryMock.Object,
             _storageServiceMock.Object,
             _parserMock.Object,
+            dbContext,
             _loggerMock.Object);
     }
 
