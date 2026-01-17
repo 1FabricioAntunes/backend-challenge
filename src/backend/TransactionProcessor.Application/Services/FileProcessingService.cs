@@ -88,16 +88,16 @@ public class FileProcessingService : IFileProcessingService
             }
 
             // Check if already processed (idempotency)
-            if (file.Status == FileStatus.Processed || file.Status == FileStatus.Rejected)
+            if (file.StatusCode == FileStatusCode.Processed || file.StatusCode == FileStatusCode.Rejected)
             {
-                result.Success = file.Status == FileStatus.Processed;
-                result.ErrorMessage = file.ErrorMessage ?? (file.Status == FileStatus.Rejected ? "File was previously rejected" : null);
-                _logger.LogInformation("File already in terminal state {Status}, skipping processing", file.Status);
+                result.Success = file.StatusCode == FileStatusCode.Processed;
+                result.ErrorMessage = file.ErrorMessage ?? (file.StatusCode == FileStatusCode.Rejected ? "File was previously rejected" : null);
+                _logger.LogInformation("File already in terminal state {Status}, skipping processing", file.StatusCode);
                 return result;
             }
 
             // Update file status to Processing
-            file.Status = FileStatus.Processing;
+            file.StatusCode = FileStatusCode.Processing;
             await _fileRepository.UpdateAsync(file);
             _logger.LogInformation("Updated file status to Processing");
 
@@ -119,7 +119,7 @@ public class FileProcessingService : IFileProcessingService
                 result.ErrorMessage = $"File validation failed: {string.Join("; ", parseResult.Errors.Take(5))}";
                 
                 // Mark file as Rejected
-                file.Status = FileStatus.Rejected;
+                file.StatusCode = FileStatusCode.Rejected;
                 file.ErrorMessage = result.ErrorMessage;
                 file.ProcessedAt = DateTime.UtcNow;
                 await _fileRepository.UpdateAsync(file);
@@ -157,49 +157,49 @@ public class FileProcessingService : IFileProcessingService
             foreach (var storeLines in linesByStoreName)
             {
                 var storeName = storeLines.Key;
-                var storeCode = storeLines.First().StoreOwner.Trim(); // Or derive from elsewhere
+                var storeOwnerName = storeLines.First().StoreOwner.Trim();
 
-                // Get or create store
-                var store = await _storeRepository.GetByCodeAsync(storeCode);
+                // Get or create store using composite key (Name, OwnerName)
+                var store = await _storeRepository.GetByNameAndOwnerAsync(storeName, storeOwnerName);
                 if (store == null)
                 {
                     store = new Store
                     {
                         Id = Guid.NewGuid(),
-                        Code = storeCode,
                         Name = storeName,
-                        Balance = 0,
+                        OwnerName = storeOwnerName,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
                 }
 
-                // Calculate balance from transactions
-                decimal balance = 0;
+                // Create transactions - Balance is computed on-demand, not persisted
                 foreach (var line in storeLines)
                 {
-                    balance += line.SignedAmount;
+                    // Convert DateTime to DateOnly and TimeSpan to TimeOnly (normalized schema)
+                    var transactionDate = DateOnly.FromDateTime(line.Date);
+                    var transactionTime = TimeOnly.FromTimeSpan(line.Time);
                     
-                    // Create transaction
+                    // Create transaction - TypeCode is a string (1-9), not an int
                     var transaction = new Transaction
                     {
-                        Id = Guid.NewGuid(),
                         FileId = fileId,
                         StoreId = store.Id,
-                        Type = line.Type,
+                        TransactionTypeCode = line.Type.ToString(),
                         Amount = (decimal)line.Amount,
-                        OccurredAt = line.Date,
-                        OccurredAtTime = line.Time,
+                        TransactionDate = transactionDate,
+                        TransactionTime = transactionTime,
                         CPF = line.CPF,
                         Card = line.Card,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
                     };
                     transactions.Add(transaction);
                 }
 
-                store.Balance = balance;
                 store.UpdatedAt = DateTime.UtcNow;
-                stores[storeCode] = store;
+                var storeKey = $"{storeName}|{storeOwnerName}";
+                stores[storeKey] = store;
             }
 
                 // Upsert stores
@@ -217,7 +217,7 @@ public class FileProcessingService : IFileProcessingService
                     result.StoresUpserted, result.TransactionsInserted);
 
                 // Step 6: Mark file as Processed
-                file.Status = FileStatus.Processed;
+                file.StatusCode = FileStatusCode.Processed;
                 file.ProcessedAt = DateTime.UtcNow;
                 await _fileRepository.UpdateAsync(file);
 
@@ -258,7 +258,7 @@ public class FileProcessingService : IFileProcessingService
             try
             {
                 var file = await _fileRepository.GetByIdAsync(fileId);
-                if (file != null && file.Status != FileStatus.Processed)
+                if (file != null && file.StatusCode != FileStatusCode.Processed)
                 {
                     file.ErrorMessage = $"Processing error: {ex.Message}";
                     await _fileRepository.UpdateAsync(file);
