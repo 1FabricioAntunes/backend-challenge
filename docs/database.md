@@ -96,86 +96,115 @@ migrationBuilder.Sql(@"
 ");
 ```
 
-### Lookup Tables
+## Implemented Schema (Target Design)
 
-#### Transaction Types Table
+### Overview
 
-Stores CNAB transaction type definitions (1-9). Seeded via migration.
+This documentation defines the target, normalized schema to be implemented. It aligns with the CNAB challenge fields and removes persisted calculated values.
 
-```sql
-CREATE TABLE transaction_types (
-    type_code SMALLINT PRIMARY KEY,
-    description VARCHAR(50) NOT NULL,
-    nature VARCHAR(20) NOT NULL, -- 'Income' or 'Expense'
-    sign CHAR(1) NOT NULL, -- '+' or '-'
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
+### Entity Relationship Diagram
 
--- Seed data (via migration)
-INSERT INTO transaction_types (type_code, description, nature, sign) VALUES
-    (1, 'Debit', 'Income', '+'),
-    (2, 'Boleto', 'Expense', '-'),
-    (3, 'Financing', 'Expense', '-'),
-    (4, 'Credit', 'Income', '+'),
-    (5, 'Loan Receipt', 'Income', '+'),
-    (6, 'Sales', 'Income', '+'),
-    (7, 'TED Receipt', 'Income', '+'),
-    (8, 'DOC Receipt', 'Income', '+'),
-    (9, 'Rent', 'Expense', '-');
+```mermaid
+erDiagram
+    TRANSACTION_TYPES ||--o{ TRANSACTIONS : defines
+    FILE_STATUSES ||--o{ FILES : has
+    FILES ||--o{ FILE_PROCESSING_ATTEMPTS : tracks
+    FILES ||--o{ TRANSACTIONS : contains
+    STORES ||--o{ TRANSACTIONS : has
+    
+    TRANSACTION_TYPES {
+        smallint TypeCode PK
+        varchar Description
+        varchar Nature "Income|Expense"
+        char Sign "+|-"
+    }
+
+    FILE_STATUSES {
+        varchar StatusCode PK
+        varchar Description
+        boolean IsTerminal
+    }
+
+    FILES {
+        uuid Id PK
+        varchar FileName "max 255"
+        bigint FileSize
+        varchar S3Key UK "max 500"
+        varchar StatusCode FK
+        varchar UploadedByUserId "nullable"
+        text ErrorMessage "nullable"
+        timestamptz UploadedAt
+        timestamptz ProcessedAt "nullable"
+        timestamptz CreatedAt
+        timestamptz UpdatedAt
+    }
+
+    STORES {
+        uuid Id PK
+        varchar Name "max 19"
+        varchar OwnerName "max 14"
+        timestamptz CreatedAt
+        timestamptz UpdatedAt
+        unique Name_OwnerName "(Name, OwnerName)"
+    }
+
+    TRANSACTIONS {
+        bigserial Id PK
+        uuid FileId FK
+        uuid StoreId FK
+        smallint TransactionTypeCode FK
+        numeric Amount "18,2 precision"
+        varchar CPF "max 11"
+        varchar CardNumber "max 12"
+        date TransactionDate
+        time TransactionTime
+        timestamptz CreatedAt
+        timestamptz UpdatedAt
+    }
+
+    FILE_PROCESSING_ATTEMPTS {
+        bigserial Id PK
+        uuid FileId FK
+        smallint AttemptNumber
+        varchar StatusCode FK
+        text ErrorMessage "nullable"
+        timestamptz StartedAt
+        timestamptz CompletedAt "nullable"
+        integer DurationMs "nullable"
+        varchar SqsMessageId "nullable"
+        varchar WorkerRequestId "nullable"
+    }
 ```
 
-**Rationale**: 
-- Maintains data integrity for transaction types
-- Enables consistent balance calculations via nature/sign
-- Provides single source of truth for type definitions
-- Supports future type additions without code changes
+**Relationships**:
+- Files → Transactions: One-to-Many, CASCADE delete
+- Stores → Transactions: One-to-Many, RESTRICT delete
+- TransactionTypes → Transactions: One-to-Many
+- FileStatuses → Files: One-to-Many
+- Files → FileProcessingAttempts: One-to-Many
 
-#### File Statuses Table
+**Key Design Decisions**:
+- Aggregations (e.g., store totals) are computed from transactions; not persisted.
+- Normalize status and type for integrity and auditability.
+- Use BIGSERIAL for high-write `Transactions.Id` to reduce B-tree fragmentation.
 
-Stores valid file processing statuses. Seeded via migration.
+### Files Table
 
-```sql
-CREATE TABLE file_statuses (
-    status_code VARCHAR(20) PRIMARY KEY,
-    description VARCHAR(100) NOT NULL,
-    is_terminal BOOLEAN NOT NULL, -- true for Processed/Rejected
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
-
--- Seed data (via migration)
-INSERT INTO file_statuses (status_code, description, is_terminal) VALUES
-    ('Uploaded', 'File uploaded, awaiting processing', false),
-    ('Processing', 'File currently being processed', false),
-    ('Processed', 'File successfully processed', true),
-    ('Rejected', 'File rejected due to validation/processing error', true);
-```
-
-**Rationale**:
-- Enforces valid status values at database level
-- `is_terminal` flag indicates final states
-- Supports business rules (terminal states cannot transition)
-- Third Normal Form compliance
-
-### Core Tables
-
-#### Files Table
-
-Stores information about uploaded CNAB files.
+Stores information about uploaded CNAB files and processing status.
 
 ```sql
 CREATE TABLE files (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid_v7(),
+    id UUID PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     file_size BIGINT NOT NULL,
     s3_key VARCHAR(500) NOT NULL UNIQUE,
     status_code VARCHAR(20) NOT NULL REFERENCES file_statuses(status_code),
-    uploaded_by_user_id VARCHAR(255), -- User identifier from JWT token 'sub' claim
+    uploaded_by_user_id VARCHAR(255),
     error_message TEXT,
     uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL,
     processed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT files_positive_size CHECK (file_size > 0)
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_files_status ON files(status_code);
@@ -183,37 +212,37 @@ CREATE INDEX idx_files_uploaded_at ON files(uploaded_at);
 CREATE INDEX idx_files_uploaded_by ON files(uploaded_by_user_id);
 ```
 
-#### Stores Table
+### Stores Table
 
-Stores store information extracted from transactions.
+Stores extracted from CNAB transactions. Aggregations are computed on demand.
 
 ```sql
 CREATE TABLE stores (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid_v7(),
-    name VARCHAR(255) NOT NULL UNIQUE,
-    owner_name VARCHAR(255) NOT NULL,
+    id UUID PRIMARY KEY,
+    name VARCHAR(19) NOT NULL,
+    owner_name VARCHAR(14) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT stores_name_owner_unique UNIQUE (name, owner_name)
 );
 
 CREATE INDEX idx_stores_name ON stores(name);
+CREATE INDEX idx_stores_owner_name ON stores(owner_name);
 ```
 
-#### Transactions Table
+### Transactions Table
 
-Stores individual transactions from CNAB files.
-
-**Performance Note**: Uses BIGSERIAL instead of UUID to avoid B-tree index fragmentation on high-write operations.
+Stores individual transaction records from CNAB files.
 
 ```sql
 CREATE TABLE transactions (
     id BIGSERIAL PRIMARY KEY,
     file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE RESTRICT,
     transaction_type_code SMALLINT NOT NULL REFERENCES transaction_types(type_code),
     amount DECIMAL(18, 2) NOT NULL,
     cpf VARCHAR(11) NOT NULL,
-    card_number VARCHAR(20) NOT NULL,
+    card_number VARCHAR(12) NOT NULL,
     transaction_date DATE NOT NULL,
     transaction_time TIME NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -224,100 +253,183 @@ CREATE TABLE transactions (
 CREATE INDEX idx_transactions_file_id ON transactions(file_id);
 CREATE INDEX idx_transactions_store_id ON transactions(store_id);
 CREATE INDEX idx_transactions_date ON transactions(transaction_date);
-CREATE INDEX idx_transactions_type_code ON transactions(transaction_type_code);
-CREATE INDEX idx_transactions_store_date ON transactions(store_id, transaction_date); -- Composite for balance queries
+CREATE INDEX idx_transactions_store_date ON transactions(store_id, transaction_date);
 ```
 
-### Relationships
+### Data Types and Constraints
 
-- **Files → Transactions**: One-to-Many (one file has many transactions)
-- **Files → File Processing Attempts**: One-to-Many (one file has many processing attempts)
-- **Stores → Transactions**: One-to-Many (one store has many transactions)
-- **Transaction Types → Transactions**: One-to-Many (one type has many transactions)
-- **File Statuses → Files**: One-to-Many (one status has many files)
-- **File Statuses → File Processing Attempts**: One-to-Many (one status has many attempts)
+**Primary Key Strategy**:
+- UUID for Files and Stores (distributed uniqueness)
+- BIGSERIAL for Transactions (high-write performance)
 
-### Entity Relationship Diagram
+**Decimal Precision**:
+- `NUMERIC(18, 2)` for all monetary values
+- 18 total digits, 2 decimal places
+- Prevents floating-point precision issues
 
-```mermaid
-erDiagram
-    TRANSACTION_TYPES ||--o{ TRANSACTIONS : defines
-    FILE_STATUSES ||--o{ FILES : has
-    FILE_STATUSES ||--o{ FILE_PROCESSING_ATTEMPTS : has
-    FILES ||--o{ TRANSACTIONS : contains
-    FILES ||--o{ FILE_PROCESSING_ATTEMPTS : tracks
-    STORES ||--o{ TRANSACTIONS : has
-    
-    TRANSACTION_TYPES {
-        smallint type_code PK
-        string description
-        string nature
-        char sign
-    }
-    
-    FILE_STATUSES {
-        string status_code PK
-        string description
-        boolean is_terminal
-    }
-    
-    FILES {
-        uuid id PK
-        string file_name
-        bigint file_size
-        string s3_key UK
-        string status_code FK
-        string uploaded_by_user_id
-        text error_message
-        timestamptz uploaded_at
-        timestamptz processed_at
-    }
-    
-    STORES {
-        uuid id PK
-        string name UK
-        string owner_name
-    }
-    
-    TRANSACTIONS {
-        bigserial id PK
-        uuid file_id FK
-        uuid store_id FK
-        smallint transaction_type_code FK
-        decimal amount
-        string cpf
-        string card_number
-        date transaction_date
-        time transaction_time
-    }
-    
-    FILE_PROCESSING_ATTEMPTS {
-        bigserial id PK
-        uuid file_id FK
-        smallint attempt_number
-        string status_code FK
-        text error_message
-        string error_code
-        timestamptz started_at
-        timestamptz completed_at
-        integer duration_ms
-        string sqs_message_id
-        string lambda_request_id
-    }
-```
+**Timestamp Strategy**:
+- All timestamps stored as `TIMESTAMP WITH TIME ZONE`
+- Application layer converts to UTC before storage
+- UTC timestamps ensure consistent sorting and comparison
+- Client applications handle timezone conversion for display
 
-## Entity Framework Core
+**String Lengths**:
+- `FileName`: 255 characters (standard file name length)
+- `Code`: 14 characters (CNAB store code length)
+- `Name`: 19 characters (CNAB store name length)
+- `CPF`: 11 characters (Brazilian CPF format)
+- `Card`: 12 characters (CNAB card number length)
+- `ErrorMessage`: 1000 characters (detailed error descriptions)
 
-**Note**: The entity models below represent the documentation schema. Actual implementation must be updated to match the normalized schema with:
-- Transaction.TransactionTypeCode (smallint) instead of TransactionType (string)
-- Transaction.Id as long (BIGSERIAL) instead of Guid
-- File.StatusCode (string FK) instead of Status (enum)
-- File.UploadedByUserId (string, nullable) for JWT user tracking
-- New entities: TransactionType, FileStatus, FileProcessingAttempt
+**Nullability**:
+- `ProcessedAt`: Nullable (only set when processing completes)
+- `ErrorMessage`: Nullable (only set when errors occur)
+- All other fields: NOT NULL (required data)
 
-See actual implementation in `Domain/Entities/` for current state.
+### Relationships and Referential Integrity
 
-### DbContext
+**One-to-Many Relationships**:
+
+1. **Files → Transactions** (Cascade Delete):
+   - One file contains many transactions
+   - When file is deleted, all related transactions are automatically deleted
+   - Ensures data integrity: no orphaned transactions
+
+2. **Stores → Transactions** (Restrict Delete):
+   - One store has many transactions
+   - Store cannot be deleted if it has transactions
+   - Protects historical transaction data
+
+**Foreign Key Enforcement**:
+- Database-level constraints ensure referential integrity
+- Invalid FileId or StoreId values are rejected
+- Transaction isolation prevents race conditions during inserts
+
+### CNAB Transaction Type Reference
+
+Transaction types (lookup table) follow CNAB specifications:
+
+| Type | Description       | Nature  | Sign | Balance Impact |
+|------|-------------------|---------|------|----------------|
+| 1    | Débito            | Income  | +    | Credit         |
+| 2    | Boleto            | Expense | -    | Debit          |
+| 3    | Financiamento     | Expense | -    | Debit          |
+| 4    | Crédito           | Income  | +    | Credit         |
+| 5    | Recebimento Empr. | Income  | +    | Credit         |
+| 6    | Vendas            | Income  | +    | Credit         |
+| 7    | Recebimento TED   | Income  | +    | Credit         |
+| 8    | Recebimento DOC   | Income  | +    | Credit         |
+| 9    | Aluguel           | Expense | -    | Debit          |
+
+**Implementation**: Signed amount calculation is derived from `sign` in `transaction_types` and applied in queries/services.
+
+### File Status Reference
+
+Status values are stored in `file_statuses` and referenced by `files.status_code`:
+
+| Status     | Description                              | Terminal | Transitions            |
+|------------|------------------------------------------|----------|------------------------|
+| Uploaded   | File uploaded, awaiting processing       | No       | → Processing           |
+| Processing | File currently being processed           | No       | → Processed, Rejected  |
+| Processed  | File successfully processed              | Yes      | (final state)          |
+| Rejected   | File rejected due to validation/errors   | Yes      | (final state)          |
+
+**Implementation**: Transitions enforced by application logic and audited in `file_processing_attempts`.
+
+## Data Integrity and Constraints
+
+### Primary Keys
+- All tables use UUID (Guid) primary keys
+- Generated by application layer via `Guid.NewGuid()`
+- Ensures global uniqueness across distributed systems
+
+### Foreign Keys
+- **Transactions.FileId → Files.Id**: CASCADE delete behavior
+  - Ensures no orphaned transactions when file is deleted
+  - Critical for data cleanup and consistency
+- **Transactions.StoreId → Stores.Id**: RESTRICT delete behavior
+  - Prevents deletion of stores with transaction history
+  - Protects historical data integrity
+
+### Unique Constraints
+- **Stores.Code**: Business-level unique identifier
+  - CNAB store codes must be unique system-wide
+  - Supports efficient upsert operations during processing
+  - Enforced by unique index `IX_Stores_Code`
+
+### Data Type Constraints
+- **Monetary Values**: NUMERIC(18, 2) prevents floating-point errors
+- **Timestamps**: All timestamps stored with timezone (UTC)
+- **String Lengths**: Match CNAB field specifications (Code: 14, Name: 19, CPF: 11, Card: 12)
+- **Nullability**: Only ProcessedAt and ErrorMessage are nullable
+
+### Application-Level Validation
+- Transaction type must be 1-9 (enforced by domain entity constructor)
+- File status transitions validated by domain methods
+- Amount values must be positive (sign determined by type)
+- Required fields validated before persistence
+
+### Defense in Depth
+- Database constraints provide first line of defense
+- Domain entities enforce business rules
+- Application services validate complex scenarios
+- Both layers work together for data integrity
+
+### Index Optimization Strategy
+
+**Query Performance Indexes**:
+
+1. **File Status Queries** (`IX_Files_Status`):
+   - Purpose: Fast filtering of files by processing status
+   - Query pattern: `WHERE Status = 'Uploaded'` (pending files)
+   - Impact: Supports file processing queue queries
+
+2. **File Upload Timeline** (`IX_Files_UploadedAt`):
+   - Purpose: Chronological sorting and date range filtering
+   - Query pattern: `ORDER BY UploadedAt DESC` or `WHERE UploadedAt >= @date`
+   - Impact: Efficient file history queries
+
+3. **Store Identification** (`stores_name_owner_unique`, UNIQUE):
+    - Purpose: Enforce uniqueness by logical store identity (Name + OwnerName)
+    - Query pattern: `WHERE name = @name AND owner_name = @owner`
+    - Impact: Prevents duplicates without synthetic codes
+
+4. **Store Name Search** (`IX_Stores_Name`):
+   - Purpose: Store filtering and searching by name
+   - Query pattern: `WHERE Name LIKE @pattern`
+   - Impact: Supports store listing and search features
+
+5. **Transaction File Relationship** (`IX_Transactions_FileId`):
+   - Purpose: Retrieve all transactions for a specific file
+   - Query pattern: `WHERE FileId = @fileId`
+   - Impact: File transaction listing and reporting
+
+6. **Transaction Store Relationship** (`IX_Transactions_StoreId`):
+   - Purpose: Retrieve all transactions for a specific store
+   - Query pattern: `WHERE StoreId = @storeId`
+   - Impact: Store transaction history and reporting queries
+
+7. **Transaction Date Filtering** (`IX_Transactions_OccurredAt`):
+   - Purpose: Date range queries and chronological sorting
+   - Query pattern: `WHERE OccurredAt BETWEEN @start AND @end`
+   - Impact: Transaction history and reporting queries
+
+8. **Store-Date Composite** (`IX_Transactions_StoreId_OccurredAt`):
+    - Purpose: Optimized store date-range queries
+    - Query pattern: `WHERE StoreId = @id AND OccurredAt >= @date`
+    - Impact: Most common query pattern for store-centric reports
+
+**Index Coverage**:
+- All foreign keys are indexed (FileId, StoreId)
+- Frequently filtered columns are indexed (Status, dates)
+- Composite index supports most common query pattern
+- Unique index enforces business rule (one store per code)
+
+## Entity Framework Core Configuration
+
+### DbContext Implementation
+
+The `ApplicationDbContext` uses Fluent API for entity configuration and relationship mapping.
 
 ```csharp
 public class ApplicationDbContext : DbContext
@@ -326,11 +438,93 @@ public class ApplicationDbContext : DbContext
     public DbSet<Store> Stores { get; set; }
     public DbSet<Transaction> Transactions { get; set; }
     
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+        : base(options)
+    {
+    }
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Configure relationships
-        // Configure indexes
-        // Configure constraints
+        base.OnModelCreating(modelBuilder);
+        
+        // File entity configuration
+        modelBuilder.Entity<File>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Status).IsRequired().HasConversion<string>();
+            entity.Property(e => e.UploadedAt).IsRequired();
+            entity.Property(e => e.ProcessedAt).IsRequired(false);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+            
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.UploadedAt);
+        });
+        
+        // Store entity configuration
+        modelBuilder.Entity<Store>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(14);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(19);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+            
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => e.Name);
+        });
+        
+        // Transaction entity configuration
+        modelBuilder.Entity<Transaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Type).IsRequired();
+            entity.Property(e => e.Amount).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.OccurredAt).IsRequired();
+            entity.Property(e => e.OccurredAtTime).IsRequired();
+            entity.Property(e => e.CPF).IsRequired().HasMaxLength(11);
+            entity.Property(e => e.Card).IsRequired().HasMaxLength(12);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Relationships
+            entity.HasOne(e => e.File)
+                  .WithMany(f => f.Transactions)
+                  .HasForeignKey(e => e.FileId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.HasOne(e => e.Store)
+                  .WithMany(s => s.Transactions)
+                  .HasForeignKey(e => e.StoreId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            // Indexes
+            entity.HasIndex(e => e.FileId);
+            entity.HasIndex(e => e.StoreId);
+            entity.HasIndex(e => e.OccurredAt);
+            entity.HasIndex(e => new { e.StoreId, e.OccurredAt });
+        });
+    }
+    
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        UpdateTimestamps();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+    
+    private void UpdateTimestamps()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
+        
+        foreach (var entry in entries)
+        {
+            if (entry.Entity is Store store)
+            {
+                if (entry.State == EntityState.Added)
+                    store.CreatedAt = DateTime.UtcNow;
+                store.UpdatedAt = DateTime.UtcNow;
+            }
+        }
     }
 }
 ```
@@ -344,17 +538,13 @@ public class File
 {
     public Guid Id { get; set; }
     public string FileName { get; set; }
-    public long FileSize { get; set; }
-    public string S3Key { get; set; }
     public FileStatus Status { get; set; }
-    public string ErrorMessage { get; set; }
     public DateTime UploadedAt { get; set; }
     public DateTime? ProcessedAt { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
+    public string? ErrorMessage { get; set; }
     
     // Navigation property
-    public ICollection<Transaction> Transactions { get; set; }
+    public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 }
 ```
 
@@ -364,13 +554,13 @@ public class File
 public class Store
 {
     public Guid Id { get; set; }
+    public string Code { get; set; }
     public string Name { get; set; }
-    public string OwnerName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     
     // Navigation property
-    public ICollection<Transaction> Transactions { get; set; }
+    public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 }
 ```
 
@@ -382,201 +572,236 @@ public class Transaction
     public Guid Id { get; set; }
     public Guid FileId { get; set; }
     public Guid StoreId { get; set; }
-    public string TransactionType { get; set; }
+    public int Type { get; set; }
     public decimal Amount { get; set; }
-    public string Cpf { get; set; }
-    public string CardNumber { get; set; }
-    public DateTime TransactionDate { get; set; }
-    public TimeSpan TransactionTime { get; set; }
+    public DateTime OccurredAt { get; set; }
+    public TimeSpan OccurredAtTime { get; set; }
+    public string CPF { get; set; }
+    public string Card { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     
     // Navigation properties
     public File File { get; set; }
     public Store Store { get; set; }
+    
+    /// <summary>
+    /// Returns the signed amount based on CNAB transaction type rules.
+    /// Types 1,4,5,6,7,8 are credits (positive).
+    /// Types 2,3,9 are debits (negative).
+    /// </summary>
+    public decimal GetSignedAmount()
+    {
+        return Type switch
+        {
+            2 or 3 or 9 => -Amount,
+            _ => Amount
+        };
+    }
 }
 ```
 
 ## Migrations
 
-### Migration Strategy
+### EF Core Migration Strategy
 
-- **EF Core Migrations**: Version-controlled schema changes
-- **Automatic Execution**: Migrations run automatically in local/dev
-- **Manual Execution**: Production migrations via CI/CD pipeline
-- **Versioning**: Each migration is versioned and reversible
+- **Version Control**: All migrations tracked in source control
+- **Sequential Naming**: Timestamp-based migration names (yyyyMMddHHmmss_MigrationName)
+- **Development**: Migrations applied automatically via `dotnet ef database update`
+- **Production**: Migrations applied via CI/CD pipeline before deployment
+- **Rollback**: Each migration has Down() method for reverting changes
 
-### Creating Migrations
+### Initial Migration (20260117183914_InitialSchema)
+
+The initial migration creates all three core tables with relationships and indexes.
+
+**Created Tables**:
+- Files (with Status and UploadedAt indexes)
+- Stores (with unique Code index and Name index)
+- Transactions (with FileId, StoreId, OccurredAt indexes and composite StoreId+OccurredAt)
+
+**Created Relationships**:
+- Transactions.FileId → Files.Id (CASCADE)
+- Transactions.StoreId → Stores.Id (RESTRICT)
+
+**Created Indexes**: 8 total indexes for query optimization
+
+### Creating New Migrations
 
 ```bash
-dotnet ef migrations add MigrationName --project Infrastructure --startup-project Backend
+cd src/backend
+dotnet ef migrations add MigrationName \
+  --project TransactionProcessor.Infrastructure \
+  --startup-project TransactionProcessor.Api \
+  --output-dir Persistence/Migrations
 ```
 
 ### Applying Migrations
 
+**Development**:
 ```bash
-dotnet ef database update --project Infrastructure --startup-project Backend
+dotnet ef database update \
+  --project TransactionProcessor.Infrastructure \
+  --startup-project TransactionProcessor.Api
+```
+
+**Production** (via deployment pipeline):
+```bash
+dotnet ef database update --connection "<connection-string>"
 ```
 
 ### Migration Best Practices
 
+- Review generated SQL before applying (`dotnet ef migrations script`)
 - One logical change per migration
-- Test migrations up and down
-- Review SQL before applying
-- Backup before production migrations
+- Test both Up and Down migrations
+- Never edit applied migrations
+- Backup database before production migrations
 
-## Transaction Strategy
+## Transaction Processing Strategy
 
-### Single Transaction Per File
+### Atomic File Processing
 
-**Critical Rule**: All transactions from a single file are persisted in a single database transaction.
+**Critical Rule**: All transactions from a single CNAB file must be persisted within a single database transaction.
 
 ```csharp
-using var transaction = await context.Database.BeginTransactionAsync();
+using var dbTransaction = await context.Database.BeginTransactionAsync();
 try
 {
-    // Validate all lines
-    // Persist all transactions
-    // Update file status
+    // 1. Update file status to Processing
+    file.Status = FileStatus.Processing;
+    await context.SaveChangesAsync();
     
-    await transaction.CommitAsync();
+    // 2. Validate all CNAB lines
+    var transactions = ValidateAndParseCnabFile(fileContent);
+    
+    // 3. Upsert stores (bulk operation)
+    foreach (var storeCode in transactions.Select(t => t.StoreCode).Distinct())
+    {
+        await UpsertStoreAsync(storeCode, storeName);
+    }
+    
+    // 4. Insert transactions (bulk operation)
+    await context.Transactions.AddRangeAsync(transactions);
+    await context.SaveChangesAsync();
+    
+    // 5. Update store balances
+    await RecalculateStoreBalancesAsync(affectedStoreIds);
+    
+    // 6. Mark file as processed
+    file.Status = FileStatus.Processed;
+    file.ProcessedAt = DateTime.UtcNow;
+    await context.SaveChangesAsync();
+    
+    // Commit all changes atomically
+    await dbTransaction.CommitAsync();
 }
-catch
+catch (Exception ex)
 {
-    await transaction.RollbackAsync();
+    await dbTransaction.RollbackAsync();
+    
+    // Mark file as rejected
+    file.Status = FileStatus.Rejected;
+    file.ErrorMessage = ex.Message;
+    await context.SaveChangesAsync();
+    
     throw;
 }
 ```
 
 ### Transaction Boundaries
 
-- **Begin**: When file processing starts
-- **Commit**: After all transactions persisted successfully
+- **Begin**: When file status changes to Processing
+- **Commit**: After all transactions persisted and reports updated
 - **Rollback**: On any validation or persistence error
 
-### Benefits
+### ACID Guarantees
 
-- **Atomicity**: All-or-nothing guarantee
-- **Consistency**: No partial data
-- **Isolation**: File processing doesn't interfere
-- **Durability**: Only committed data persists
+- **Atomicity**: All transactions from a file succeed or all fail
+- **Consistency**: Aggregations derive consistently from transaction history
+- **Isolation**: Concurrent file processing doesn't interfere
+- **Durability**: Committed data survives system failures
 
-## Query Patterns
+## Query Patterns and Examples
 
-### Store Balance Calculation
+### Store Aggregation Example (computed)
 
-```sql
-SELECT 
-    s.id,
-    s.name,
-    s.owner_name,
-    COALESCE(SUM(
-        CASE 
-            WHEN tt.sign = '+' THEN t.amount
-            WHEN tt.sign = '-' THEN -t.amount
-            ELSE 0
-        END
-    ), 0) AS balance
-FROM stores s
-LEFT JOIN transactions t ON s.id = t.store_id
-LEFT JOIN transaction_types tt ON t.transaction_type_code = tt.type_code
-GROUP BY s.id, s.name, s.owner_name
-ORDER BY s.name;
+Calculate store balance by summing signed transaction amounts:
+
+```csharp
+// Using GetSignedAmount() method
+var balance = await context.Transactions
+    .AsNoTracking()
+    .Where(t => t.StoreId == storeId)
+    .SumAsync(t => 
+        t.Type == 2 || t.Type == 3 || t.Type == 9 
+            ? -t.Amount 
+            : t.Amount
+    );
 ```
 
-### Transaction Filtering
-
+**SQL Equivalent**:
 ```sql
-SELECT 
-    t.*,
-    s.name AS store_name,
-    s.owner_name
-FROM transactions t
-INNER JOIN stores s ON t.store_id = s.id
-WHERE 
-    (@store_name IS NULL OR s.name LIKE '%' || @store_name || '%')
-    AND (@date_from IS NULL OR t.transaction_date >= @date_from)
-    AND (@date_to IS NULL OR t.transaction_date <= @date_to)
-ORDER BY t.transaction_date DESC, t.transaction_time DESC
-LIMIT @limit OFFSET @offset;
+SELECT COALESCE(SUM(
+    CASE 
+        WHEN "Type" IN (2, 3, 9) THEN -"Amount"
+        ELSE "Amount"
+    END
+), 0) AS Balance
+FROM "Transactions"
+WHERE "StoreId" = @storeId;
 ```
 
-## Indexing Strategy
+### Transaction Filtering with Pagination
 
-### Primary Indexes
+```csharp
+var transactions = await context.Transactions
+    .AsNoTracking()
+    .Include(t => t.Store)
+    .Include(t => t.File)
+    .Where(t => 
+        (storeId == null || t.StoreId == storeId) &&
+        (startDate == null || t.OccurredAt >= startDate) &&
+        (endDate == null || t.OccurredAt <= endDate)
+    )
+    .OrderByDescending(t => t.OccurredAt)
+    .Skip((page - 1) * pageSize)
+    .Take(pageSize)
+    .ToListAsync();
+```
 
-- Primary keys on all tables
-- Foreign key indexes for joins
+### File Processing Status Query
 
-### Performance Indexes
+```csharp
+var pendingFiles = await context.Files
+    .AsNoTracking()
+    .Where(f => f.Status == FileStatus.Uploaded)
+    .OrderBy(f => f.UploadedAt)
+    .ToListAsync();
+```
 
-- `files.status_code` - Filter by status (FK to file_statuses)
-- `files.uploaded_at` - Sort by upload date
-- `files.uploaded_by_user_id` - Filter by user
-- `stores.name` - Store name lookups (also UNIQUE constraint)
-- `transactions.file_id` - File transaction queries
-- `transactions.store_id` - Store transaction queries
-- `transactions.transaction_date` - Date range queries
-- `transactions.transaction_type_code` - Filter by type (FK to transaction_types)
-- `transactions (store_id, transaction_date)` - Composite index for balance calculations
-- `file_processing_attempts.file_id` - Lookup attempts by file
-- `file_processing_attempts.started_at` - Time-based queries
-- `file_processing_attempts.status_code` - Filter by attempt status
+### Store Upsert Pattern
 
-### Index Considerations
+```csharp
+var store = await context.Stores
+    .FirstOrDefaultAsync(s => s.Code == code);
 
-- Balance between read and write performance
-- Monitor index usage
-- Avoid over-indexing
-- Consider composite indexes for common queries
+if (store == null)
+{
+    store = new Store
+    {
+        Id = Guid.NewGuid(),
+        Code = code,
+        Name = name
+    };
+    context.Stores.Add(store);
+}
+else
+{
+    store.Name = name;
+}
 
-## Data Integrity
-
-### Constraints
-
-- **Primary Keys**: Unique identifiers
-- **Foreign Keys**: Referential integrity
-- **Unique Constraints**: Store names must be unique
-- **Check Constraints**: Status values, positive amounts
-- **Not Null**: Required fields
-
-### Validation
-
-- Database-level validation for critical rules
-- Application-level validation for business rules
-- Both layers provide defense in depth
-
-## Connection Management
-
-### Connection Pooling
-
-- EF Core manages connection pooling
-- Configured pool size based on load
-- Connection timeout settings
-- Idle connection cleanup
-
-### Best Practices
-
-- Use async methods throughout
-- Dispose contexts properly
-- Avoid long-running transactions
-- Monitor connection usage
-
-## Backup and Recovery
-
-### Backup Strategy
-
-- Regular automated backups
-- Point-in-time recovery capability
-- Backup retention policy
-- Test restore procedures
-
-### Disaster Recovery
-
-- Backup replication
-- Recovery time objectives (RTO)
-- Recovery point objectives (RPO)
-- Documented recovery procedures
+await context.SaveChangesAsync();
+```
 
 ## Performance Optimization
 
@@ -597,7 +822,7 @@ LIMIT @limit OFFSET @offset;
 3. **Use Projections for Read-Only Data**:
    - Select only needed columns with `.Select()`
    - Reduces data transfer and memory usage
-   - Example: `.Select(s => new { s.Name, s.Balance })`
+    - Example: `.Select(s => new { s.Name, s.OwnerName })`
 
 4. **Batch Operations**:
    - Use `AddRangeAsync()` for multiple inserts
@@ -662,28 +887,150 @@ entity.Property(e => e.CreatedAt)
 - Easy conversion to local times in client
 - Standard practice for distributed systems
 
-## Local Development
+## Connection Management
 
-### Docker Setup
+### EF Core Connection Pooling
 
-PostgreSQL runs in Docker Compose:
+Entity Framework Core automatically manages connection pooling with configurable settings:
+
+```csharp
+// Program.cs configuration
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+    {
+        npgsqlOptions.CommandTimeout(30);
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorCodesToAdd: null);
+    }));
+```
+
+**Connection Pool Settings**:
+- Default pool size: 100 connections (configurable via connection string)
+- Connection timeout: 30 seconds
+- Idle connection cleanup: Automatic
+- Retry on transient failures: 3 attempts with exponential backoff
+
+### Best Practices
+
+- ✅ Use async methods throughout (`*Async()`)
+- ✅ Dispose DbContext properly (automatic with DI scopes)
+- ✅ Keep transactions short-lived
+- ✅ Use `AsNoTracking()` for read-only queries
+- ✅ Monitor connection pool exhaustion
+- ❌ Don't share DbContext across requests
+- ❌ Avoid long-running transactions (>5 seconds)
+- ❌ Never block async methods with `.Result` or `.Wait()`
+
+## Backup and Recovery
+
+### Local Development
+
+**Docker Volume Backup**:
+```bash
+# Backup postgres-data volume
+docker run --rm -v postgres-data:/data -v $(pwd):/backup ubuntu tar czf /backup/postgres-backup.tar.gz /data
+
+# Restore from backup
+docker run --rm -v postgres-data:/data -v $(pwd):/backup ubuntu tar xzf /backup/postgres-backup.tar.gz -C /
+```
+
+### Production (AWS RDS)
+
+**Automated Backups**:
+- Retention period: 7-30 days (configurable)
+- Backup window: During low-traffic hours
+- Point-in-time recovery: Up to 5 minutes before failure
+- Multi-AZ deployment: Automatic failover
+
+**Manual Snapshots**:
+- Create before major migrations
+- Long-term retention (beyond automated window)
+- Cross-region replication for disaster recovery
+
+### Recovery Procedures
+
+1. **Identify failure point**: Check CloudWatch logs and metrics
+2. **Assess data loss**: Determine last successful transaction
+3. **Choose recovery method**: Point-in-time restore vs snapshot
+4. **Restore database**: Via AWS Console or CLI
+5. **Verify integrity**: Run validation queries
+6. **Resume operations**: Update connection strings, restart services
+
+**Recovery Objectives**:
+- **RTO** (Recovery Time Objective): < 1 hour
+- **RPO** (Recovery Point Objective): < 5 minutes
+
+## Local Development Configuration
+
+### Docker Compose Setup
+
+PostgreSQL 16 runs in Docker for local development:
 
 ```yaml
-postgres:
-  image: postgres:15
-  environment:
-    POSTGRES_DB: cnabsystem
-    POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: postgres
-  ports:
-    - "5432:5432"
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: transactionprocessor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
 ```
 
 ### Connection String
 
+**Development** (appsettings.Development.json):
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres;Ssl Mode=Disable"
+  }
+}
 ```
-Host=localhost;Port=5432;Database=cnabsystem;Username=postgres;Password=postgres
+
+**Production** (AWS RDS):
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=<rds-endpoint>;Port=5432;Database=transactionprocessor;Username=<user>;Password=<password>;Ssl Mode=Require"
+  }
+}
 ```
+
+### Applying Schema Locally
+
+1. Start PostgreSQL:
+   ```bash
+   docker-compose up -d postgres
+   ```
+
+2. Apply migrations:
+   ```bash
+   cd src/backend
+   dotnet ef database update \
+     --project TransactionProcessor.Infrastructure \
+     --startup-project TransactionProcessor.Api
+   ```
+
+3. Verify schema:
+   ```bash
+   docker exec -it <container-id> psql -U postgres -d transactionprocessor
+   \dt  -- List tables
+   \d "Files"  -- Describe Files table
+   ```
 
 ## Production Considerations
 
