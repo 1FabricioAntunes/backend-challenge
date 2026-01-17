@@ -49,6 +49,53 @@ services:
     networks:
       - transactionprocessor-network
 
+  # Backend API (.NET)
+  api:
+    build:
+      context: ./src/backend
+      # Dockerfile will be added later; pointing to API project folder
+      dockerfile: TransactionProcessor.Api/Dockerfile
+    container_name: transactionprocessor-api
+    restart: unless-stopped
+    ports:
+      - "5000:80"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres
+      AWS__Region: us-east-1
+      AWS__S3__ServiceURL: http://localstack:4566
+      AWS__SQS__ServiceURL: http://localstack:4566
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    volumes:
+      # Mount backend source for hot reload/dev workflows
+      - ./src/backend:/app
+    networks:
+      - transactionprocessor-network
+
+  # Frontend (Vite/React)
+  frontend:
+    build:
+      context: ./src/frontend
+      # Dockerfile to be created later
+      dockerfile: Dockerfile
+    container_name: transactionprocessor-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000
+      VITE_API_URL: http://localhost:5000
+    volumes:
+      # Mount frontend source for hot reload
+      - ./src/frontend:/app
+    networks:
+      - transactionprocessor-network
+
 volumes:
   postgres_data:
     driver: local
