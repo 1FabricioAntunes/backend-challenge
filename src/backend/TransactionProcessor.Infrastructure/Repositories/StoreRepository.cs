@@ -7,6 +7,7 @@ namespace TransactionProcessor.Infrastructure.Repositories;
 
 /// <summary>
 /// Repository implementation for Store aggregate using Entity Framework Core
+/// Normalized schema: composite unique key (Name, OwnerName), no persisted Balance
 /// </summary>
 public class StoreRepository : IStoreRepository
 {
@@ -24,10 +25,16 @@ public class StoreRepository : IStoreRepository
             .FirstOrDefaultAsync(s => s.Id == id);
     }
 
-    public async Task<Store?> GetByCodeAsync(string code)
+    /// <summary>
+    /// Get store by composite key (Name, OwnerName) - normalized approach
+    /// </summary>
+    /// <param name="name">Store name</param>
+    /// <param name="ownerName">Store owner name</param>
+    /// <returns>Store entity or null if not found</returns>
+    public async Task<Store?> GetByNameAndOwnerAsync(string name, string ownerName)
     {
         return await _context.Stores
-            .FirstOrDefaultAsync(s => s.Code == code);
+            .FirstOrDefaultAsync(s => s.Name == name && s.OwnerName == ownerName);
     }
 
     public async Task<IEnumerable<Store>> GetAllAsync()
@@ -38,16 +45,19 @@ public class StoreRepository : IStoreRepository
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Upsert store using composite key (Name, OwnerName)
+    /// Note: Balance is not persisted; compute from transactions using GetSignedAmount()
+    /// </summary>
+    /// <param name="store">Store entity to create or update</param>
     public async Task UpsertAsync(Store store)
     {
         var existing = await _context.Stores
-            .FirstOrDefaultAsync(s => s.Code == store.Code);
+            .FirstOrDefaultAsync(s => s.Name == store.Name && s.OwnerName == store.OwnerName);
 
         if (existing != null)
         {
-            existing.Name = store.Name;
-            existing.Balance = store.Balance;
-            existing.UpdatedAt = store.UpdatedAt;
+            existing.UpdatedAt = DateTime.UtcNow;
             _context.Stores.Update(existing);
         }
         else
@@ -62,5 +72,15 @@ public class StoreRepository : IStoreRepository
     {
         _context.Stores.Update(store);
         await _context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Legacy method for backwards compatibility - kept but deprecated
+    /// Use GetByNameAndOwnerAsync instead for normalized schema
+    /// </summary>
+    public async Task<Store?> GetByCodeAsync(string code)
+    {
+        // Code field removed in normalized schema; this returns null
+        return await Task.FromResult<Store?>(null);
     }
 }
