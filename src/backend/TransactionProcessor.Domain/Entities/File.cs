@@ -129,12 +129,35 @@ public class File
     /// <summary>
     /// Transitions file status from Uploaded to Processing.
     /// 
-    /// Business rule: Only valid when current status is Uploaded.
-    /// Called when the worker starts processing the file from the queue.
+    /// This method marks the beginning of the file processing workflow.
+    /// Called when the worker retrieves the file from the SQS queue and begins
+    /// validation and transaction parsing.
     /// 
-    /// State machine: Uploaded → Processing
+    /// File Status Lifecycle:
+    /// 1. Uploaded (initial): File received and stored in S3, awaiting processing
+    /// 2. Processing (this transition): File is being validated and parsed
+    /// 3. Processed or Rejected (terminal): Processing completed (success or failure)
+    /// 
+    /// State Machine Transition: Uploaded → Processing
+    /// - Only valid from Uploaded state
+    /// - Prerequisite: File must be successfully stored in S3
+    /// - Next steps: CNAB parsing, transaction extraction, database persistence
+    /// - Exit conditions: Either MarkAsProcessed() or MarkAsRejected()
+    /// 
+    /// Workflow Context:
+    /// 1. User uploads CNAB file (via API endpoint)
+    /// 2. File stored in S3 and File entity created with status=Uploaded
+    /// 3. File ID published to SQS queue for async processing
+    /// 4. Worker receives message, retrieves file from S3
+    /// 5. Worker calls StartProcessing() ← This method
+    /// 6. Worker validates file structure and parses CNAB lines
+    /// 7. Worker calls MarkAsProcessed() or MarkAsRejected() based on result
+    /// 8. Client polls status endpoint to retrieve result
+    /// 
+    /// Reference: docs/async-processing.md § Processing Flow
+    /// Reference: docs/business-rules.md § File States
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if status is not Uploaded</exception>
+    /// <exception cref="InvalidOperationException">Thrown if current status is not Uploaded</exception>
     public void StartProcessing()
     {
         if (StatusCode != FileStatusCode.Uploaded)
@@ -148,12 +171,50 @@ public class File
     /// <summary>
     /// Transitions file status to Processed and records completion timestamp.
     /// 
-    /// Business rule: Only valid when current status is Processing.
-    /// Called after all transactions have been successfully persisted.
+    /// This method marks the successful completion of file processing.
+    /// Called after all transactions have been validated and successfully persisted
+    /// to the database, and store balances have been updated.
     /// 
-    /// State machine: Processing → Processed (terminal)
+    /// File Status Lifecycle:
+    /// 1. Uploaded: File received and stored in S3
+    /// 2. Processing: File is being validated and parsed
+    /// 3. Processed (this transition) [TERMINAL]: All transactions persisted successfully
+    /// 4. Alternative: Rejected [TERMINAL]: Validation failed or processing error
+    /// 
+    /// State Machine Transition: Processing → Processed (TERMINAL)
+    /// - Only valid from Processing state
+    /// - Prerequisite: All CNAB lines successfully parsed and validated
+    /// - Prerequisite: All stores and transactions persisted in database transaction
+    /// - Prerequisite: Store balances successfully updated
+    /// - Postcondition: File cannot transition to any other state
+    /// - Sets ProcessedAt timestamp to current UTC time
+    /// - Clears any previous ErrorMessage from failed retry attempts
+    /// 
+    /// Processing Completion Workflow:
+    /// 1. Worker retrieves file from S3
+    /// 2. Worker calls StartProcessing()
+    /// 3. Worker parses CNAB file (80-character lines)
+    /// 4. Worker validates file structure and fields
+    /// 5. Worker extracts stores and transactions
+    /// 6. Worker starts database transaction (atomic)
+    /// 7. Worker upserts stores and inserts transactions
+    /// 8. Worker calculates and updates store balances
+    /// 9. Worker commits database transaction
+    /// 10. Worker calls MarkAsProcessed() ← This method
+    /// 11. Worker deletes message from SQS queue
+    /// 12. Client receives status=Processed on next poll
+    /// 
+    /// Data Consistency Requirements:
+    /// - Must be called only after successful database transaction commit
+    /// - All associated transactions must be persisted before calling this
+    /// - Store balance updates must be completed
+    /// - If called prematurely, data integrity is compromised
+    /// 
+    /// Reference: docs/async-processing.md § Success Path
+    /// Reference: docs/business-rules.md § File Processing States
+    /// Reference: docs/database.md § Transactional Integrity
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if status is not Processing</exception>
+    /// <exception cref="InvalidOperationException">Thrown if current status is not Processing</exception>
     public void MarkAsProcessed()
     {
         if (StatusCode != FileStatusCode.Processing)
@@ -167,17 +228,89 @@ public class File
     }
 
     /// <summary>
-    /// Transitions file status to Rejected and records error details.
+    /// Transitions file status to Rejected and records detailed error information.
     /// 
-    /// Business rule: Only valid when current status is Processing.
-    /// Called when validation fails or processing encounters an unrecoverable error.
-    /// Stores error message for audit trail and user visibility.
+    /// This method marks the failure of file processing.
+    /// Called when validation fails or processing encounters an unrecoverable error
+    /// that cannot be retried or recovered. The error message is stored for audit
+    /// trail and user notification.
     /// 
-    /// State machine: Processing → Rejected (terminal)
+    /// File Status Lifecycle:
+    /// 1. Uploaded: File received and stored in S3
+    /// 2. Processing: File is being validated and parsed
+    /// 3. Processed [TERMINAL]: All transactions persisted successfully
+    /// 4. Rejected (this transition) [TERMINAL]: Validation/processing failed
+    /// 
+    /// State Machine Transition: Processing → Rejected (TERMINAL)
+    /// - Only valid from Processing state
+    /// - Prerequisite: Processing attempt was made (or will be abandoned)
+    /// - Postcondition: File cannot transition to any other state
+    /// - Sets ProcessedAt timestamp to current UTC time
+    /// - Stores error message (max 1000 characters) for troubleshooting
+    /// - Error message truncated to 1000 chars if longer
+    /// 
+    /// Rejection Scenarios:
+    /// 
+    /// 1. VALIDATION FAILURES (before transaction processing):
+    ///    - File size exceeds limit (e.g., greater than 10MB)
+    ///    - Invalid CNAB format (wrong line length, missing fields)
+    ///    - Encoding issues (non-ASCII characters)
+    ///    - Missing required header records
+    ///    Error: 'CNAB validation failed: Line 5 invalid format (expected 80 chars, got 78)'
+    /// 
+    /// 2. PARSING ERRORS (during line parsing):
+    ///    - Invalid transaction type code (not 1-9)
+    ///    - Invalid amount format (non-numeric)
+    ///    - Invalid date/time format
+    ///    - Invalid CPF/Card format
+    ///    Error: 'CNAB parse error on line 10: Invalid transaction type X (expected 1-9)'
+    /// 
+    /// 3. BUSINESS RULE VIOLATIONS:
+    ///    - Amount is zero or negative
+    ///    - Store code validation fails
+    ///    - Duplicate transaction detection
+    ///    Error: 'Business rule violation on line 15: Amount must be greater than 0, got 0'
+    /// 
+    /// 4. DATABASE ERRORS:
+    ///    - Transaction persistence fails (constraint violation, timeout)
+    ///    - Connection lost during processing
+    ///    - Deadlock detected
+    ///    Error: 'Database error: Unique constraint violation on store code ABC123'
+    /// 
+    /// 5. TRANSACTIONAL ROLLBACK:
+    ///    - Processing succeeded for some transactions but failed for others
+    ///    - Entire batch rolled back to maintain consistency
+    ///    - File marked as Rejected even though partial success occurred
+    ///    Error: 'Transaction failed on line 25: Rolled back all changes. Check store balance consistency.'
+    /// 
+    /// Error Message Usage:
+    /// - Stored in database for audit trail
+    /// - Returned to client via status endpoint
+    /// - Displayed in admin/monitoring dashboards
+    /// - Logged with structured logging and correlation IDs
+    /// - Used for alerts and operational troubleshooting
+    /// 
+    /// Retry Strategy:
+    /// - File remains in S3 and can be reprocessed
+    /// - Admin can manually retry (future enhancement)
+    /// - No automatic retries for rejected files
+    /// - New upload required to reprocess if file was corrupted
+    /// 
+    /// DLQ Behavior:
+    /// - If processing error (type 4-5), message moves to DLQ after max retries
+    /// - If validation error (type 1-3), message deleted (no retry)
+    /// - DLQ for operational monitoring and investigation
+    /// 
+    /// Reference: docs/async-processing.md § Failure Path and Error Handling
+    /// Reference: docs/business-rules.md § File Rejection Rules
+    /// Reference: technical-decisions.md § Error Classification
     /// </summary>
-    /// <param name="errorMessage">Description of the error (max 1000 characters)</param>
+    /// <param name="errorMessage">Description of why file processing failed (max 1000 characters).
+    /// Should be specific and actionable for troubleshooting.
+    /// Example: 'CNAB validation failed: Line 10 has invalid type code X (expected 1-9)'
+    /// </param>
     /// <exception cref="ArgumentException">Thrown if errorMessage is null or empty</exception>
-    /// <exception cref="InvalidOperationException">Thrown if status is not Processing</exception>
+    /// <exception cref="InvalidOperationException">Thrown if current status is not Processing</exception>
     public void MarkAsRejected(string errorMessage)
     {
         if (string.IsNullOrWhiteSpace(errorMessage))

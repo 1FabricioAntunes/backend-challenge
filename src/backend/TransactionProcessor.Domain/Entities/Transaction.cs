@@ -218,42 +218,89 @@ public class Transaction
     /// <summary>
     /// Calculates the signed amount based on transaction type from database.
     /// 
+    /// This method implements the CNAB credit/debit calculation rule:
+    /// Each transaction type has an associated sign (credit or debit) that determines
+    /// whether the amount increases or decreases the store's balance.
+    /// 
     /// Algorithm:
-    /// 1. Convert amount from cents to BRL: Amount / 100
-    /// 2. Get sign multiplier from TransactionType.GetSignMultiplier()
-    /// 3. Return: Amount/100 × SignMultiplier
+    /// 1. Convert amount from cents to BRL: Amount / 100.00
+    /// 2. Retrieve sign multiplier from database: TransactionType.Sign
+    /// 3. Calculate signed amount: Amount/100.00 × SignMultiplier
+    /// 4. Return result (positive for income, negative for expense)
     /// 
-    /// Sign Multiplier (from transaction_types database table):
-    /// - Credit types (2, 3, 9 = Boleto, Financing, Rent): Sign = "-" → -1.0m (negative)
-    /// - Debit types (1, 4, 5, 6, 7, 8): Sign = "+" → +1.0m (positive)
+    /// CNAB Credit/Debit Rules (80-character format, position 1 = type):
     /// 
-    /// CRITICAL DESIGN NOTE:
-    /// Sign is retrieved from the transaction_types lookup table in the database,
-    /// NOT hardcoded in this method. This makes the code resilient to specification
-    /// changes. If the database changes a type's sign, the code automatically adapts
-    /// without recompilation.
+    /// CREDIT TYPES (increase store balance):
+    /// - Type 4: Crédito (Credit) - Direct credit to account
+    /// - Type 5: Recebimento Empr. (Inflow) - Business receipt
+    /// - Type 6: Vendas (Inflow) - Sales proceeds
+    /// - Type 7: Recebimento TED (Inflow) - Electronic transfer receipt
+    /// - Type 8: Recebimento DOC (Inflow) - Bank transfer receipt
+    /// - Type 9: Transferência (Credit) - Transfer received
+    /// Sign from database: '+' → multiplier +1.0m
+    /// Result: Transaction amount added to balance
     /// 
-    /// Reference: docs/business-rules.md § Transaction Types table for mappings
-    /// Reference: docs/database.md § Transaction Type Lookup for database design
+    /// DEBIT TYPES (decrease store balance):
+    /// - Type 1: Débito (Debit) - Direct debit from account
+    /// - Type 2: Boleto (Outflow) - Boleto payment/debt
+    /// - Type 3: Financiamento (Outflow) - Financing/loan charge
+    /// Sign from database: '-' → multiplier -1.0m
+    /// Result: Transaction amount subtracted from balance
+    /// 
+    /// CRITICAL DESIGN PRINCIPLE - Database-Driven Sign Calculation:
+    /// The sign value is retrieved from the transaction_types lookup table in the database,
+    /// NOT hardcoded in this method. This architecture choice ensures:
+    /// 
+    /// 1. RESILIENCE: If business rules change and type classifications shift,
+    ///    only the database needs updating. No code recompilation required.
+    /// 
+    /// 2. CONSISTENCY: All parts of the system use the same sign value from
+    ///    a single source of truth (the database lookup table).
+    /// 
+    /// 3. AUDITABILITY: Database queries can easily show historical changes
+    ///    to type definitions, providing compliance trail.
+    /// 
+    /// 4. SEPARATION OF CONCERNS: Business rules (stored in database) are
+    ///    separate from algorithm implementation (this code).
+    /// 
+    /// Reference: docs/business-rules.md § CNAB Transaction Types table
+    /// Reference: docs/database.md § Transaction Type Lookup table design
+    /// Reference: CNAB 240 specification (80-character fixed-width format)
     /// </summary>
-    /// <param name="transactionType">TransactionType entity with sign from database</param>
-    /// <returns>Signed amount in BRL (positive for credits, negative for debits)</returns>
+    /// <param name="transactionType">TransactionType entity with sign retrieved from database lookup</param>
+    /// <returns>Signed amount in BRL (positive adds to balance, negative subtracts)</returns>
     /// <remarks>
-    /// Example calculations:
-    /// - Amount=10000 (100 BRL), Type 1 (Debit, Sign="-") → -100.00 BRL
-    /// - Amount=50000 (500 BRL), Type 4 (Credit, Sign="+") → +500.00 BRL
+    /// Real-world examples with Type-to-Balance impact:
     /// 
-    /// The sign value comes from the database, ensuring:
-    /// 1. Consistency across all code
-    /// 2. Resilience to specification changes
-    /// 3. Easy auditing (can query database to see type definitions)
-    /// 4. No hardcoded business logic in code
+    /// Example 1: Sale proceeds (Type 6 = Inflow)
+    ///   Amount: 25000 (cents) = 250.00 BRL
+    ///   Type: 6 (Vendas/Sales, Sign='+' from database)
+    ///   Calculation: 250.00 × (+1) = +250.00 BRL
+    ///   Impact: Store balance increases by 250 BRL
     /// 
-    /// This method is used during Store balance calculation:
-    /// Store.CalculateBalance(transactions) sums GetSignedAmount() for all transactions.
+    /// Example 2: Boleto payment (Type 2 = Outflow)
+    ///   Amount: 15000 (cents) = 150.00 BRL
+    ///   Type: 2 (Boleto, Sign='-' from database)
+    ///   Calculation: 150.00 × (-1) = -150.00 BRL
+    ///   Impact: Store balance decreases by 150 BRL
+    /// 
+    /// Example 3: Bank transfer (Type 7 = Inflow)
+    ///   Amount: 500000 (cents) = 5000.00 BRL
+    ///   Type: 7 (Recebimento TED, Sign='+' from database)
+    ///   Calculation: 5000.00 × (+1) = +5000.00 BRL
+    ///   Impact: Store balance increases by 5000 BRL
+    /// 
+    /// Usage: This method is called by Store.CalculateBalance(transactions)
+    /// to compute the total store balance by summing signed amounts of all
+    /// associated transactions.
+    /// 
+    /// Data Requirements:
+    /// - TransactionType must be eagerly loaded from database (not lazy-loaded)
+    /// - Ensures TransactionType.Sign contains the correct database value
+    /// - Prevents N+1 queries during balance calculation
     /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown if transactionType is null</exception>
-    /// <exception cref="InvalidOperationException">Thrown if transactionType.Sign is invalid</exception>
+    /// <exception cref="ArgumentNullException">Thrown if transactionType is null (missing database-loaded entity)</exception>
+    /// <exception cref="InvalidOperationException">Thrown if TransactionType.Sign value is invalid (not '+' or '-')</exception>
     public decimal GetSignedAmount(TransactionType transactionType)
     {
         if (transactionType == null)
