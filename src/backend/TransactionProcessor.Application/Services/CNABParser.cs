@@ -124,19 +124,69 @@ public class CNABParser : ICNABParser
             }
             data.Date = date;
 
+            // Validate date is in reasonable range (1900 to current year + 1)
+            if (data.Date.Year < 1900 || data.Date.Year > DateTime.Now.Year + 1)
+            {
+                errors.Add($"Line {lineNumber}: Transaction date {data.Date:yyyy-MM-dd} is out of reasonable range (1900-{DateTime.Now.Year + 1}).");
+            }
+
             // Amount (10 chars, positions 9-18): numeric in cents
             if (!decimal.TryParse(line.Substring(9, 10), out var amount) || amount < 0)
             {
                 errors.Add($"Line {lineNumber}: Invalid amount '{line.Substring(9, 10)}'. Must be numeric and non-negative.");
                 return (false, null, errors);
             }
+            // Amount must be positive (at least 1 cent)
+            if (amount == 0)
+            {
+                errors.Add($"Line {lineNumber}: Amount must be positive (greater than 0).");
+                return (false, null, errors);
+            }
             data.Amount = amount;
 
-            // CPF (11 chars, positions 19-29)
-            data.CPF = line.Substring(19, 11).Trim();
+            // CPF (11 chars, positions 19-29): must be 11 digits
+            var cpfRaw = line.Substring(19, 11).Trim();
+            if (string.IsNullOrEmpty(cpfRaw))
+            {
+                errors.Add($"Line {lineNumber}: CPF is required and cannot be empty.");
+                return (false, null, errors);
+            }
+            if (cpfRaw.Length != 11 || !cpfRaw.All(c => char.IsDigit(c)))
+            {
+                errors.Add($"Line {lineNumber}: Invalid CPF format '{cpfRaw}'. Must be exactly 11 digits.");
+                return (false, null, errors);
+            }
+            if (!ContainsSafeCharacters(cpfRaw, "CPF"))
+            {
+                errors.Add($"Line {lineNumber}: CPF contains unsafe characters or SQL injection vectors.");
+                return (false, null, errors);
+            }
+            data.CPF = cpfRaw;
 
-            // Card (12 chars, positions 30-41)
-            data.Card = line.Substring(30, 12).Trim();
+            // Card (12 chars, positions 30-41): allow masked cards with asterisks
+            var cardRaw = line.Substring(30, 12).Trim();
+            if (string.IsNullOrEmpty(cardRaw))
+            {
+                errors.Add($"Line {lineNumber}: Card number is required and cannot be empty.");
+                return (false, null, errors);
+            }
+            if (cardRaw.Length != 12)
+            {
+                errors.Add($"Line {lineNumber}: Invalid card format '{cardRaw}'. Must be exactly 12 characters (alphanumeric or asterisks for masked).");
+                return (false, null, errors);
+            }
+            // Card can be alphanumeric or asterisks (for masked cards)
+            if (!cardRaw.All(c => char.IsLetterOrDigit(c) || c == '*'))
+            {
+                errors.Add($"Line {lineNumber}: Invalid card format '{cardRaw}'. Must contain only alphanumeric characters or asterisks (*).");
+                return (false, null, errors);
+            }
+            if (!ContainsSafeCharacters(cardRaw, "Card"))
+            {
+                errors.Add($"Line {lineNumber}: Card contains unsafe characters or SQL injection vectors.");
+                return (false, null, errors);
+            }
+            data.Card = cardRaw;
 
             // Time (6 chars, positions 42-47): HHMMSS
             if (!TryParseTime(line.Substring(42, 6), out var time))
@@ -146,14 +196,42 @@ public class CNABParser : ICNABParser
             }
             data.Time = time;
 
-            // Store Owner (14 chars, positions 48-61)
-            data.StoreOwner = line.Substring(48, 14).Trim();
+            // Store Owner (14 chars, positions 48-61): required, non-empty
+            var storeOwnerRaw = line.Substring(48, 14).Trim();
+            if (string.IsNullOrEmpty(storeOwnerRaw))
+            {
+                errors.Add($"Line {lineNumber}: Store owner name is required and cannot be empty.");
+                return (false, null, errors);
+            }
+            if (!ContainsSafeCharacters(storeOwnerRaw, "StoreOwner"))
+            {
+                errors.Add($"Line {lineNumber}: Store owner name contains unsafe characters or SQL injection vectors.");
+                return (false, null, errors);
+            }
+            data.StoreOwner = storeOwnerRaw;
 
-            // Store Name (19 chars, positions 62-80)
-            data.StoreName = line.Substring(62, 19).Trim();
+            // Store Name (19 chars, positions 62-80): required, non-empty
+            var storeNameRaw = line.Substring(62, 19).Trim();
+            if (string.IsNullOrEmpty(storeNameRaw))
+            {
+                errors.Add($"Line {lineNumber}: Store name is required and cannot be empty.");
+                return (false, null, errors);
+            }
+            if (!ContainsSafeCharacters(storeNameRaw, "StoreName"))
+            {
+                errors.Add($"Line {lineNumber}: Store name contains unsafe characters or SQL injection vectors.");
+                return (false, null, errors);
+            }
+            data.StoreName = storeNameRaw;
 
             // Validate signed amount calculation doesn't throw
             _ = data.SignedAmount;
+
+            // If we collected any validation errors (like date range), return them
+            if (errors.Count > 0)
+            {
+                return (false, null, errors);
+            }
 
             return (true, data, errors);
         }
@@ -162,6 +240,44 @@ public class CNABParser : ICNABParser
             errors.Add($"Line {lineNumber}: Unexpected parsing error: {ex.Message}");
             return (false, null, errors);
         }
+    }
+
+    /// <summary>
+    /// Validates string contains only safe characters (OWASP A03: Injection Prevention).
+    /// Rejects strings containing SQL keywords, operators, or command injection vectors.
+    /// </summary>
+    private static bool ContainsSafeCharacters(string value, string fieldName)
+    {
+        if (string.IsNullOrEmpty(value))
+            return true;
+
+        // Characters that should never appear in CNAB fields
+        var unsafePatterns = new[]
+        {
+            ";", "--", "/*", "*/", "xp_", "sp_", // SQL injection
+            "'", "\"", "\\", // Quote escaping
+            "<", ">", "&", // HTML/XML encoding
+            "|", "$", "`", // Command injection
+            "&&", "||", // Boolean operators
+        };
+
+        var upperValue = value.ToUpperInvariant();
+
+        foreach (var pattern in unsafePatterns)
+        {
+            if (upperValue.Contains(pattern.ToUpperInvariant()))
+                return false;
+        }
+
+        // Check for SQL keywords that might indicate injection
+        var sqlKeywords = new[] { "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "UNION", "EXEC" };
+        foreach (var keyword in sqlKeywords)
+        {
+            if (upperValue.Contains(keyword))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>
