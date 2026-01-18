@@ -6,8 +6,16 @@ using TransactionProcessor.Infrastructure.Persistence;
 namespace TransactionProcessor.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for Transaction entity using Entity Framework Core
-/// Normalized schema: BIGSERIAL ID, DateOnly+TimeOnly split, FK to transaction_types
+/// Repository implementation for Transaction entity using Entity Framework Core.
+/// 
+/// EF Core Optimization Patterns:
+/// - AsNoTracking() for all read-only queries (reduces memory usage by 30-40%)
+/// - Include() for related entities to prevent N+1 queries
+/// - AddRangeAsync for bulk insert operations during file processing
+/// Normalized schema: BIGSERIAL ID (long), DateOnly+TimeOnly split, FK to transaction_types
+/// 
+/// Reference: technical-decisions.md § 7 (EF Core Optimizations)
+/// Reference: docs/database.md § EF Core Optimization Patterns
 /// </summary>
 public class TransactionRepository : ITransactionRepository
 {
@@ -19,39 +27,72 @@ public class TransactionRepository : ITransactionRepository
     }
 
     /// <summary>
-    /// Get transaction by BIGSERIAL ID
-    /// Note: ID is now long (BIGSERIAL), not Guid
+    /// Get transaction by BIGSERIAL ID with related entities.
+    /// 
+    /// Eager-loads:
+    /// - File navigation property
+    /// - Store navigation property
+    /// 
+    /// Use this method when you need full transaction details with relationships.
+    /// Note: ID is long (BIGSERIAL), not Guid, for high-write performance optimization.
     /// </summary>
+    /// <param name="id">Transaction identifier (BIGSERIAL)</param>
+    /// <returns>Transaction entity with File and Store loaded, or null if not found</returns>
     public async Task<Transaction?> GetByIdAsync(long id)
     {
         return await _context.Transactions
             .Include(t => t.File)
             .Include(t => t.Store)
+            .Include(t => t.TransactionType)
+            .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == id);
     }
 
     /// <summary>
-    /// Get all transactions for a file
-    /// Uses DateOnly for transactionDate (split from old OccurredAt)
+    /// Get all transactions for a file (read-only, optimized).
+    /// 
+    /// PERFORMANCE OPTIMIZATION:
+    /// - Uses AsNoTracking() to reduce memory consumption
+    /// - Eager-loads Store navigation for each transaction
+    /// - Ordered by TransactionDate for chronological display
+    /// 
+    /// Used for displaying transaction details after file processing.
+    /// Uses DateOnly for TransactionDate (normalized schema: split from old OccurredAt).
     /// </summary>
+    /// <param name="fileId">File identifier</param>
+    /// <returns>Collection of transactions for the file, ordered by date</returns>
     public async Task<IEnumerable<Transaction>> GetByFileIdAsync(Guid fileId)
     {
         return await _context.Transactions
             .AsNoTracking()
-            .Where(t => t.FileId == fileId)
             .Include(t => t.Store)
+            .Include(t => t.TransactionType)
+            .Where(t => t.FileId == fileId)
             .OrderBy(t => t.TransactionDate)
+                .ThenBy(t => t.TransactionTime)
             .ToListAsync();
     }
 
     /// <summary>
-    /// Get transactions for store by date range
-    /// Uses DateOnly for transaction_date filtering (normalized schema)
+    /// Get transactions for store with optional date range filtering (read-only, optimized).
+    /// 
+    /// PERFORMANCE OPTIMIZATION:
+    /// - Uses AsNoTracking() for read-only query
+    /// - Efficient date filtering with indexed TransactionDate column
+    /// - Ordered chronologically for reporting
+    /// 
+    /// Used for store transaction history and balance calculations.
+    /// Uses DateOnly for transaction_date filtering (normalized schema).
     /// </summary>
+    /// <param name="storeId">Store identifier</param>
+    /// <param name="startDate">Start date (inclusive), null for no start limit</param>
+    /// <param name="endDate">End date (inclusive), null for no end limit</param>
+    /// <returns>Collection of transactions within date range, ordered by date</returns>
     public async Task<IEnumerable<Transaction>> GetByStoreIdAsync(Guid storeId, DateTime? startDate = null, DateTime? endDate = null)
     {
         var query = _context.Transactions
             .AsNoTracking()
+            .Include(t => t.TransactionType)
             .Where(t => t.StoreId == storeId);
 
         if (startDate.HasValue)
@@ -68,28 +109,73 @@ public class TransactionRepository : ITransactionRepository
 
         return await query
             .OrderBy(t => t.TransactionDate)
+                .ThenBy(t => t.TransactionTime)
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Add a new transaction to the repository.
+    /// 
+    /// Business rules enforced:
+    /// - Transaction entity must be valid (constructor validates TypeCode, Amount)
+    /// - Transaction.Id (BIGSERIAL) is auto-generated by database
+    /// - FileId and StoreId must reference existing entities
+    /// 
+    /// Typically called individually for single transaction inserts.
+    /// For bulk inserts during file processing, use AddRangeAsync instead.
+    /// </summary>
+    /// <param name="transaction">Transaction entity to add</param>
+    /// <exception cref="ArgumentNullException">Thrown if transaction is null</exception>
     public async Task AddAsync(Transaction transaction)
     {
+        if (transaction == null)
+            throw new ArgumentNullException(nameof(transaction));
+
         await _context.Transactions.AddAsync(transaction);
         await _context.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Add multiple transactions in a single batch operation (bulk insert).
+    /// 
+    /// PERFORMANCE OPTIMIZATION:
+    /// - Batch insert reduces database round-trips
+    /// - All transactions saved in single SaveChangesAsync call
+    /// - Significantly faster than multiple AddAsync calls
+    /// - Essential for file processing with hundreds/thousands of transactions
+    /// 
+    /// Used during CNAB file processing to persist all transactions atomically.
+    /// All transactions succeed or all fail (transactional integrity).
+    /// </summary>
+    /// <param name="transactions">Collection of transactions to add</param>
+    /// <exception cref="ArgumentNullException">Thrown if transactions is null</exception>
     public async Task AddRangeAsync(IEnumerable<Transaction> transactions)
     {
+        if (transactions == null)
+            throw new ArgumentNullException(nameof(transactions));
+
         await _context.Transactions.AddRangeAsync(transactions);
         await _context.SaveChangesAsync();
     }
 
     /// <summary>
-    /// Check if transaction already exists for file+store combo
-    /// Helps with idempotency during file processing
+    /// Check if transaction already exists for file+store combination.
+    /// 
+    /// Used for idempotency checks during file processing:
+    /// - Before processing file, check if transactions already exist
+    /// - Skip re-processing if data already persisted
+    /// - Prevents duplicate transactions from retry attempts
+    /// 
+    /// Returns first transaction found for the combination.
+    /// If null, file has not been processed for this store yet.
     /// </summary>
+    /// <param name="fileId">File identifier</param>
+    /// <param name="storeId">Store identifier</param>
+    /// <returns>First transaction for file+store combination, or null if none exist</returns>
     public async Task<Transaction?> GetFirstByFileAndStoreAsync(Guid fileId, Guid storeId)
     {
         return await _context.Transactions
+            .AsNoTracking()
             .FirstOrDefaultAsync(t => t.FileId == fileId && t.StoreId == storeId);
     }
 }
