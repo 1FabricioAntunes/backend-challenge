@@ -39,22 +39,28 @@ public class TestDataSeeder
                 _ => FileStatusCode.Rejected
             };
 
-            var file = new FileEntity
+            var fileId = Guid.NewGuid();
+            var file = new FileEntity(fileId, $"test_file_{i + 1:D3}.txt")
             {
-                Id = Guid.NewGuid(),
-                FileName = $"test_file_{i + 1:D3}.txt",
-                StatusCode = fileStatus,
                 FileSize = 1024 + i * 100,
-                S3Key = $"cnab/test_file_{i + 1:D3}.txt",
-                UploadedAt = now.AddHours(-i),
-                ProcessedAt = fileStatus is FileStatusCode.Processed or FileStatusCode.Rejected
-                    ? now.AddHours(-i + 1)
-                    : null,
-                ErrorMessage = fileStatus == FileStatusCode.Rejected
-                    ? "Invalid CNAB format: missing required fields"
-                    : null,
-                Transactions = new List<Transaction>()
+                S3Key = $"cnab/test_file_{i + 1:D3}.txt"
             };
+
+            // Apply status transitions using domain methods
+            if (fileStatus == FileStatusCode.Processing)
+            {
+                file.StartProcessing();
+            }
+            else if (fileStatus == FileStatusCode.Processed)
+            {
+                file.StartProcessing();
+                file.MarkAsProcessed();
+            }
+            else if (fileStatus == FileStatusCode.Rejected)
+            {
+                file.StartProcessing();
+                file.MarkAsRejected("Invalid CNAB format: missing required fields");
+            }
 
             // Add transactions for processed files
             if (fileStatus == FileStatusCode.Processed)
@@ -82,20 +88,33 @@ public class TestDataSeeder
         string? errorMessage = null,
         int transactionCount = 0)
     {
-        var file = new FileEntity
+        var fileId = Guid.NewGuid();
+        var file = new FileEntity(fileId, fileName)
         {
-            Id = Guid.NewGuid(),
-            FileName = fileName,
-            StatusCode = statusCode,
             FileSize = 1024,
-            S3Key = $"cnab/{Guid.NewGuid():N}.txt",
-            UploadedAt = uploadedAt ?? DateTime.UtcNow,
-            ProcessedAt = processedAt,
-            ErrorMessage = errorMessage,
-            Transactions = transactionCount > 0 
-                ? CreateTransactions(Guid.NewGuid(), transactionCount)
-                : new List<Transaction>()
+            S3Key = $"cnab/{Guid.NewGuid():N}.txt"
         };
+
+        // Apply status transitions using domain methods
+        if (statusCode == FileStatusCode.Processing)
+        {
+            file.StartProcessing();
+        }
+        else if (statusCode == FileStatusCode.Processed)
+        {
+            file.StartProcessing();
+            file.MarkAsProcessed();
+        }
+        else if (statusCode == FileStatusCode.Rejected)
+        {
+            file.StartProcessing();
+            file.MarkAsRejected(errorMessage ?? "Processing failed");
+        }
+
+        if (transactionCount > 0)
+        {
+            file.Transactions = CreateTransactions(fileId, transactionCount);
+        }
 
         _dbContext.Files.Add(file);
         await _dbContext.SaveChangesAsync();
@@ -112,19 +131,17 @@ public class TestDataSeeder
         for (int i = 0; i < count; i++)
         {
             var now = DateTime.UtcNow;
-            transactions.Add(new Transaction
-            {
-                FileId = fileId,
-                StoreId = Guid.NewGuid(),
-                TransactionTypeCode = (1 + (i % 9)).ToString(), // Types 1-9 as strings
-                Amount = (decimal)(100.00 + i * 50.00),
-                TransactionDate = DateOnly.FromDateTime(now.AddMinutes(-i)),
-                TransactionTime = TimeOnly.FromDateTime(now),
-                CPF = "12345678901",
-                Card = "123456789012",
-                CreatedAt = now,
-                UpdatedAt = now
-            });
+            var transaction = new Transaction(
+                fileId: fileId,
+                storeId: Guid.NewGuid(),
+                transactionTypeCode: (1 + (i % 9)).ToString(), // Types 1-9 as strings
+                amount: (decimal)(100.00 + i * 50.00),
+                transactionDate: DateOnly.FromDateTime(now.AddMinutes(-i)),
+                transactionTime: TimeOnly.FromDateTime(now),
+                cpf: "12345678901",
+                card: "123456789012"
+            );
+            transactions.Add(transaction);
         }
         return transactions;
     }
