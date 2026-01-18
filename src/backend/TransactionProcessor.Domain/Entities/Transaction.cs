@@ -84,6 +84,13 @@ public class Transaction
     public Store? Store { get; set; }
 
     /// <summary>
+    /// The transaction type lookup entity (FK to transaction_types table).
+    /// Navigational property for querying type details and sign information.
+    /// Must be eager-loaded when calculating signed amounts.
+    /// </summary>
+    public TransactionType? TransactionType { get; set; }
+
+    /// <summary>
     /// Calculates the signed amount based on transaction type from database lookup.
     /// 
     /// NOTE: Sign is retrieved from the transaction_types lookup table, not hardcoded.
