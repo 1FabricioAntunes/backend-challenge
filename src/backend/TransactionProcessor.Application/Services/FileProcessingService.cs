@@ -96,8 +96,8 @@ public class FileProcessingService : IFileProcessingService
                 return result;
             }
 
-            // Update file status to Processing
-            file.StatusCode = FileStatusCode.Processing;
+            // Update file status to Processing using domain method
+            file.StartProcessing();
             await _fileRepository.UpdateAsync(file);
             _logger.LogInformation("Updated file status to Processing");
 
@@ -118,10 +118,8 @@ public class FileProcessingService : IFileProcessingService
                 result.ValidationErrors = parseResult.Errors;
                 result.ErrorMessage = $"File validation failed: {string.Join("; ", parseResult.Errors.Take(5))}";
                 
-                // Mark file as Rejected
-                file.StatusCode = FileStatusCode.Rejected;
-                file.ErrorMessage = result.ErrorMessage;
-                file.ProcessedAt = DateTime.UtcNow;
+                // Mark file as Rejected using domain method
+                file.MarkAsRejected(result.ErrorMessage);
                 await _fileRepository.UpdateAsync(file);
                 
                 stopwatch.Stop();
@@ -163,14 +161,12 @@ public class FileProcessingService : IFileProcessingService
                 var store = await _storeRepository.GetByNameAndOwnerAsync(storeName, storeOwnerName);
                 if (store == null)
                 {
-                    store = new Store
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = storeName,
-                        OwnerName = storeOwnerName,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
+                    // Create new store using constructor for immutable Id
+                    store = new Store(
+                        id: Guid.NewGuid(),
+                        ownerName: storeOwnerName,
+                        name: storeName
+                    );
                 }
 
                 // Create transactions - Balance is computed on-demand, not persisted
@@ -180,20 +176,18 @@ public class FileProcessingService : IFileProcessingService
                     var transactionDate = DateOnly.FromDateTime(line.Date);
                     var transactionTime = TimeOnly.FromTimeSpan(line.Time);
                     
-                    // Create transaction - TypeCode is a string (1-9), not an int
-                    var transaction = new Transaction
-                    {
-                        FileId = fileId,
-                        StoreId = store.Id,
-                        TransactionTypeCode = line.Type.ToString(),
-                        Amount = (decimal)line.Amount,
-                        TransactionDate = transactionDate,
-                        TransactionTime = transactionTime,
-                        CPF = line.CPF,
-                        Card = line.Card,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
+                    // Create transaction using constructor - TypeCode is a string (1-9), not an int
+                    // Constructor sets immutable properties; FileId set separately by File aggregate
+                    var transaction = new Transaction(
+                        fileId: fileId,
+                        storeId: store.Id,
+                        transactionTypeCode: line.Type.ToString(),
+                        amount: (decimal)line.Amount,
+                        transactionDate: transactionDate,
+                        transactionTime: transactionTime,
+                        cpf: line.CPF,
+                        card: line.Card
+                    );
                     transactions.Add(transaction);
                 }
 
@@ -202,10 +196,20 @@ public class FileProcessingService : IFileProcessingService
                 stores[storeKey] = store;
             }
 
-                // Upsert stores
+                // Upsert stores - Use conditional Add/Update since UpsertAsync doesn't exist
                 foreach (var store in stores.Values)
                 {
-                    await _storeRepository.UpsertAsync(store);
+                    var existingStore = await _storeRepository.GetByNameAndOwnerAsync(store.Name, store.OwnerName);
+                    if (existingStore == null)
+                    {
+                        await _storeRepository.AddAsync(store);
+                    }
+                    else
+                    {
+                        // Update existing store properties
+                        existingStore.UpdatedAt = DateTime.UtcNow;
+                        await _storeRepository.UpdateAsync(existingStore);
+                    }
                     result.StoresUpserted++;
                 }
 
@@ -216,9 +220,8 @@ public class FileProcessingService : IFileProcessingService
                 _logger.LogInformation("Persisted {StoreCount} stores and {TransactionCount} transactions",
                     result.StoresUpserted, result.TransactionsInserted);
 
-                // Step 6: Mark file as Processed
-                file.StatusCode = FileStatusCode.Processed;
-                file.ProcessedAt = DateTime.UtcNow;
+                // Step 6: Mark file as Processed using domain method
+                file.MarkAsProcessed();
                 await _fileRepository.UpdateAsync(file);
 
                 // Commit transaction - all or nothing
@@ -254,15 +257,15 @@ public class FileProcessingService : IFileProcessingService
 
             _logger.LogError(ex, "Unexpected error during file processing. FileId: {FileId}", fileId);
 
-            // Try to publish detailed error info into file record without changing terminal status
+            // Try to mark file as rejected with error details
             try
             {
                 var file = await _fileRepository.GetByIdAsync(fileId);
-                if (file != null && file.StatusCode != FileStatusCode.Processed)
+                if (file != null && file.StatusCode == FileStatusCode.Processing)
                 {
-                    file.ErrorMessage = $"Processing error: {ex.Message}";
+                    file.MarkAsRejected($"Processing error: {ex.Message}");
                     await _fileRepository.UpdateAsync(file);
-                    _logger.LogInformation("Recorded processing error details on file while leaving status for retry");
+                    _logger.LogInformation("Marked file as Rejected with error details");
                 }
             }
             catch (Exception updateEx)
