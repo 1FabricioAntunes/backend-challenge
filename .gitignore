@@ -1,0 +1,68 @@
+technical-decisions.md
+IMPLEMENTATION_GUIDE.md
+PULL_REQUEST.md
+docs/pr-templates/02-frontend-project-setup.md
+docs/pr-templates/03-docker-compose-setup.md
+docs/pr-templates/04-database-schema.md
+docs/pr-templates/05-domain-models.md
+docs/pr-templates/06-domain-services.md
+docs/pr-templates/07-database-repositories.md
+docs/pr-templates/08-s3-storage-service.md
+docs/pr-templates/09-sqs-queue-service.md
+docs/pr-templates/10-transaction-query-component.md
+docs/pr-templates/11-store-balance-display.md
+docs/pr-templates/12-file-status-display.md
+docs/pr-templates/13-app-layout-navigation.md
+docs/pr-templates/14-unit-tests.md
+docs/pr-templates/15-integration-tests.md
+docs/pr-templates/16-e2e-tests.md
+docs/pr-templates/17-structured-logging.md
+docs/pr-templates/18-metrics-monitoring.md
+docs/pr-templates/19-api-documentation.md
+docs/pr-templates/20-docker-optimization.md
+docs/pr-templates/21-deployment-verification.md
+docs/pr-templates/README.md
+src/backend/TransactionProcessor.Api/obj/*
+src/backend/TransactionProcessor.Application/obj/*
+
+# .NET / C# build outputs
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+*.cache/
+*.dbmdl
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE
+.vs/
+.idea/
+
+# Logs
+*.log
+
+# Packages
+*.nupkg
+*.snupkg
+packages/
+
+# Coverage
+TestResults/
+*.coverage*
+*.coveragexml
+
+# Publish
+*.publishsettings
+*.pubxml*
+app.publish/
+
+# Resharper / analyzers
+_ReSharper*/
+*.DotSettings.user
+
+# Backup / temp
+*.bak
+*.tmp
+~$*

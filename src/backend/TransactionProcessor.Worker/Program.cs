@@ -59,6 +59,7 @@ var host = Host.CreateDefaultBuilder(args)
 
         // Hosted Services
         services.AddHostedService<FileProcessingHostedService>();
+        services.AddHostedService<NotificationDlqWorker>();
 
         // Configuration
         services.Configure<FileProcessingOptions>(

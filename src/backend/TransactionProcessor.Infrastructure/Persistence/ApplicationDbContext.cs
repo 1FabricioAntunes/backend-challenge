@@ -45,6 +45,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<FileStatus> FileStatuses { get; set; } = null!;
 
     /// <summary>
+    /// Tracks notification attempts to enable idempotency and retry scheduling
+    /// </summary>
+    public DbSet<NotificationAttempt> NotificationAttempts { get; set; } = null!;
+
+    /// <summary>
     /// Configure entity models and relationships for normalized schema
     /// Aligns with docs/database.md - 3NF normalization with lookup tables
     /// </summary>
@@ -204,6 +209,8 @@ public class ApplicationDbContext : DbContext
         {
             entity.ToTable("Stores");
             entity.HasKey(e => e.Id);
+            // Balance is a computed-only domain property; ignore to prevent persistence
+            entity.Ignore(e => e.Balance);
             entity.Property(e => e.Name)
                 .IsRequired()
                 .HasMaxLength(19);
@@ -225,6 +232,52 @@ public class ApplicationDbContext : DbContext
 
             // Note: Balance is NOT persisted; computed on-demand from transactions
             // See GetSignedAmount() method in Transaction entity and docs/database.md
+        });
+
+        // NotificationAttempts tracking table configuration
+        modelBuilder.Entity<NotificationAttempt>(entity =>
+        {
+            entity.ToTable("notification_attempts");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.FileId).IsRequired();
+            entity.Property(e => e.NotificationType)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("notification_type");
+            entity.Property(e => e.Recipient)
+                .IsRequired()
+                .HasMaxLength(500)
+                .HasColumnName("recipient");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasColumnName("status");
+            entity.Property(e => e.AttemptCount)
+                .IsRequired()
+                .HasColumnName("attempt_count");
+            entity.Property(e => e.LastAttemptAt)
+                .IsRequired()
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("last_attempt_at");
+            entity.Property(e => e.ErrorMessage)
+                .HasMaxLength(1000)
+                .HasColumnName("error_message");
+            entity.Property(e => e.SentAt)
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("sent_at");
+
+            // Foreign Key: NotificationAttempt belongs to File
+            entity.HasOne<FileEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.FileId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("fk_notification_attempts_files");
+
+            // Indexes per Implementation Guide
+            entity.HasIndex(e => e.FileId).HasDatabaseName("idx_notification_attempts_file_id");
+            entity.HasIndex(e => e.Status).HasDatabaseName("idx_notification_attempts_status");
+            entity.HasIndex(e => e.LastAttemptAt).HasDatabaseName("idx_notification_attempts_last_attempt_at");
         });
     }
 
