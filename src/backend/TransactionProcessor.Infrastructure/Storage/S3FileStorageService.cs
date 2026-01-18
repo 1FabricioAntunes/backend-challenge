@@ -3,6 +3,7 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Polly;
 using TransactionProcessor.Domain.Interfaces;
 
 namespace TransactionProcessor.Infrastructure.Storage;
@@ -10,6 +11,7 @@ namespace TransactionProcessor.Infrastructure.Storage;
 /// <summary>
 /// S3 file storage service implementation.
 /// Supports both AWS S3 and LocalStack for development.
+/// Includes retry policies for transient failures with exponential backoff.
 /// </summary>
 public class S3FileStorageService : IFileStorageService
 {
@@ -17,6 +19,7 @@ public class S3FileStorageService : IFileStorageService
     private readonly IConfiguration _configuration;
     private readonly ILogger<S3FileStorageService> _logger;
     private readonly string _bucketName;
+    private readonly IAsyncPolicy _retryPolicy;
 
     /// <summary>
     /// Initializes a new instance of the S3FileStorageService.
@@ -34,10 +37,63 @@ public class S3FileStorageService : IFileStorageService
 
         _bucketName = _configuration["AWS:S3:BucketName"]
             ?? throw new InvalidOperationException("AWS:S3:BucketName configuration is required");
+
+        _retryPolicy = BuildRetryPolicy();
+    }
+
+    /// <summary>
+    /// Builds the retry policy for S3 operations with exponential backoff.
+    /// </summary>
+    /// <returns>An async policy configured for transient S3 failures.</returns>
+    private IAsyncPolicy BuildRetryPolicy()
+    {
+        return Policy
+            .Handle<AmazonS3Exception>(IsRetryableException)
+            .Or<HttpRequestException>()
+            .Or<TimeoutException>()
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    _logger.LogWarning(
+                        "S3 operation retry attempt {RetryCount} after {DelayMs}ms due to transient failure",
+                        retryCount,
+                        (int)timespan.TotalMilliseconds);
+                });
+    }
+
+    /// <summary>
+    /// Determines if an S3 exception is retryable based on error code and HTTP status.
+    /// Retryable errors: network errors, timeout, 503 service unavailable, 5xx server errors.
+    /// Non-retryable errors: 404 not found, 403 forbidden, access denied.
+    /// </summary>
+    /// <param name="ex">The S3 exception to evaluate.</param>
+    /// <returns>True if the exception represents a transient error; otherwise, false.</returns>
+    private static bool IsRetryableException(AmazonS3Exception ex)
+    {
+        // Non-retryable errors: client errors that won't succeed on retry
+        if (ex.ErrorCode == "NoSuchKey" || ex.ErrorCode == "NotFound") return false;
+        if (ex.ErrorCode == "AccessDenied" || ex.ErrorCode == "Forbidden") return false;
+        if (ex.ErrorCode == "InvalidBucketName" || ex.ErrorCode == "InvalidObjectState") return false;
+
+        // Retryable errors: service unavailable, request timeout, internal server errors
+        if (ex.ErrorCode == "ServiceUnavailable") return true;
+        if (ex.ErrorCode == "RequestTimeout" || ex.ErrorCode == "SlowDown") return true;
+        if (ex.ErrorCode == "InternalError") return true;
+        if ((int?)ex.StatusCode >= 500) return true;  // Server errors (5xx)
+        if (ex.StatusCode == System.Net.HttpStatusCode.RequestTimeout) return true;
+
+        // Network-related errors are retryable
+        if (ex.InnerException is HttpRequestException || ex.InnerException is TimeoutException)
+            return true;
+
+        return false;
     }
 
     /// <summary>
     /// Uploads a CNAB file stream to S3 with the specified file ID and name.
+    /// Includes automatic retry on transient failures (exponential backoff, max 3 retries).
     /// </summary>
     /// <param name="fileStream">The file stream to upload.</param>
     /// <param name="fileName">The original file name.</param>
@@ -46,7 +102,9 @@ public class S3FileStorageService : IFileStorageService
     /// <returns>The S3 object key used to retrieve the file later.</returns>
     /// <remarks>
     /// Key format: cnab/{fileId}/{fileName}
-    /// Metadata stored: original-filename, upload-timestamp, content-type
+    /// Metadata stored: original-filename, upload-timestamp, file-id, content-type
+    /// Retries: exponential backoff 2s, 4s, 8s for transient failures
+    /// Non-retryable: 404 not found, 403 forbidden, access denied
     /// </remarks>
     public async Task<string> UploadAsync(Stream fileStream, string fileName, Guid fileId, CancellationToken cancellationToken = default)
     {
@@ -64,22 +122,26 @@ public class S3FileStorageService : IFileStorageService
 
             _logger.LogInformation("Uploading file to S3: Key={S3Key}, FileId={FileId}, FileName={FileName}", s3Key, fileId, fileName);
 
-            var putObjectRequest = new PutObjectRequest
+            // Execute with retry policy for transient failures
+            await _retryPolicy.ExecuteAsync(async () =>
             {
-                BucketName = _bucketName,
-                Key = s3Key,
-                InputStream = fileStream,
-                ContentType = "application/octet-stream"
-            };
+                var putObjectRequest = new PutObjectRequest
+                {
+                    BucketName = _bucketName,
+                    Key = s3Key,
+                    InputStream = fileStream,
+                    ContentType = "application/octet-stream"
+                };
 
-            // Add metadata for tracking
-            putObjectRequest.Metadata.Add("original-filename", fileName);
-            putObjectRequest.Metadata.Add("upload-timestamp", uploadTimestamp);
-            putObjectRequest.Metadata.Add("file-id", fileId.ToString());
+                // Add metadata for tracking
+                putObjectRequest.Metadata.Add("original-filename", fileName);
+                putObjectRequest.Metadata.Add("upload-timestamp", uploadTimestamp);
+                putObjectRequest.Metadata.Add("file-id", fileId.ToString());
 
-            var response = await _s3Client.PutObjectAsync(putObjectRequest);
+                var response = await _s3Client.PutObjectAsync(putObjectRequest, cancellationToken);
 
-            _logger.LogInformation("File uploaded successfully to S3: Key={S3Key}, ETag={ETag}", s3Key, response.ETag);
+                _logger.LogInformation("File uploaded successfully to S3: Key={S3Key}, ETag={ETag}", s3Key, response.ETag);
+            });
 
             return s3Key;
         }
@@ -97,11 +159,16 @@ public class S3FileStorageService : IFileStorageService
 
     /// <summary>
     /// Downloads a file stream from S3 by its object key.
+    /// Includes automatic retry on transient failures (exponential backoff, max 3 retries).
     /// </summary>
     /// <param name="fileKey">The S3 object key.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>The file stream.</returns>
     /// <exception cref="FileNotFoundException">Thrown when the object does not exist in S3.</exception>
+    /// <remarks>
+    /// Retries: exponential backoff 2s, 4s, 8s for transient failures
+    /// Non-retryable: 404 not found (FileNotFoundException is thrown instead)
+    /// </remarks>
     public async Task<Stream> DownloadAsync(string fileKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileKey))
@@ -111,18 +178,23 @@ public class S3FileStorageService : IFileStorageService
         {
             _logger.LogInformation("Downloading file from S3: Key={S3Key}", fileKey);
 
-            var getObjectRequest = new GetObjectRequest
-            {
-                BucketName = _bucketName,
-                Key = fileKey
-            };
-
-            var response = await _s3Client.GetObjectAsync(getObjectRequest);
-
-            // Copy to memory stream to allow stream reuse
             var memoryStream = new MemoryStream();
-            await response.ResponseStream.CopyToAsync(memoryStream);
-            memoryStream.Position = 0;
+
+            // Execute with retry policy for transient failures
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var getObjectRequest = new GetObjectRequest
+                {
+                    BucketName = _bucketName,
+                    Key = fileKey
+                };
+
+                var response = await _s3Client.GetObjectAsync(getObjectRequest, cancellationToken);
+
+                // Copy to memory stream to allow stream reuse
+                await response.ResponseStream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+            });
 
             _logger.LogInformation("File downloaded successfully from S3: Key={S3Key}, Size={Size}", fileKey, memoryStream.Length);
 
@@ -147,9 +219,13 @@ public class S3FileStorageService : IFileStorageService
 
     /// <summary>
     /// Deletes a file from S3 by its object key.
+    /// Includes automatic retry on transient failures (exponential backoff, max 3 retries).
     /// </summary>
     /// <param name="fileKey">The S3 object key.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <remarks>
+    /// Retries: exponential backoff 2s, 4s, 8s for transient failures
+    /// </remarks>
     public async Task DeleteAsync(string fileKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileKey))
@@ -159,13 +235,17 @@ public class S3FileStorageService : IFileStorageService
         {
             _logger.LogInformation("Deleting file from S3: Key={S3Key}", fileKey);
 
-            var deleteObjectRequest = new DeleteObjectRequest
+            // Execute with retry policy for transient failures
+            await _retryPolicy.ExecuteAsync(async () =>
             {
-                BucketName = _bucketName,
-                Key = fileKey
-            };
+                var deleteObjectRequest = new DeleteObjectRequest
+                {
+                    BucketName = _bucketName,
+                    Key = fileKey
+                };
 
-            await _s3Client.DeleteObjectAsync(deleteObjectRequest);
+                await _s3Client.DeleteObjectAsync(deleteObjectRequest, cancellationToken);
+            });
 
             _logger.LogInformation("File deleted successfully from S3: Key={S3Key}", fileKey);
         }
@@ -183,10 +263,15 @@ public class S3FileStorageService : IFileStorageService
 
     /// <summary>
     /// Checks whether a file exists in S3.
+    /// Includes automatic retry on transient failures (exponential backoff, max 3 retries).
     /// </summary>
     /// <param name="fileKey">The S3 object key.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>True if the file exists; otherwise, false.</returns>
+    /// <remarks>
+    /// Retries: exponential backoff 2s, 4s, 8s for transient failures
+    /// Non-retryable: 404 not found (returns false instead of retrying)
+    /// </remarks>
     public async Task<bool> ExistsAsync(string fileKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileKey))
@@ -196,16 +281,23 @@ public class S3FileStorageService : IFileStorageService
         {
             _logger.LogDebug("Checking file existence in S3: Key={S3Key}", fileKey);
 
-            var getMetadataRequest = new GetObjectMetadataRequest
-            {
-                BucketName = _bucketName,
-                Key = fileKey
-            };
+            bool exists = false;
 
-            await _s3Client.GetObjectMetadataAsync(getMetadataRequest);
+            // Execute with retry policy for transient failures
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var getMetadataRequest = new GetObjectMetadataRequest
+                {
+                    BucketName = _bucketName,
+                    Key = fileKey
+                };
+
+                await _s3Client.GetObjectMetadataAsync(getMetadataRequest, cancellationToken);
+                exists = true;
+            });
 
             _logger.LogDebug("File exists in S3: Key={S3Key}", fileKey);
-            return true;
+            return exists;
         }
         catch (AmazonS3Exception ex) when (ex.ErrorCode == "NotFound" || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
