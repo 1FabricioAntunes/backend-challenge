@@ -68,7 +68,7 @@ public class File
     /// Timestamp when file was uploaded (UTC).
     /// Set automatically in constructor; immutable after creation.
     /// </summary>
-    public DateTime UploadedAt { get; private set; }
+    public DateTime UploadedAt { get; set; }
 
     /// <summary>
     /// Timestamp when file processing completed (UTC, nullable).
