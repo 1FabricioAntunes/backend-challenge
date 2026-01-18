@@ -29,4 +29,61 @@ awslocal sqs create-queue \
   --attributes RedrivePolicy='{"deadLetterTargetArn":"'"${DLQ_ARN}"'","maxReceiveCount":"3"}',VisibilityTimeout=300,MessageRetentionPeriod=1209600,ReceiveMessageWaitTimeSeconds=20 \
   >/dev/null 2>&1 || true
 
+echo "[init] Ensuring SQS DLQ: notification-dlq"
+NOTIFICATION_DLQ_URL=$(awslocal sqs create-queue \
+  --queue-name notification-dlq \
+  --attributes MessageRetentionPeriod=1209600,VisibilityTimeout=300 \
+  --query 'QueueUrl' \
+  --output text 2>/dev/null) || true
+
+if [ -z "$NOTIFICATION_DLQ_URL" ]; then
+  NOTIFICATION_DLQ_URL=$(awslocal sqs get-queue-url \
+    --queue-name notification-dlq \
+    --query 'QueueUrl' \
+    --output text 2>/dev/null) || NOTIFICATION_DLQ_URL=""
+fi
+
+if [ -n "$NOTIFICATION_DLQ_URL" ]; then
+  echo "[init] Created/verified queue: notification-dlq ($NOTIFICATION_DLQ_URL)"
+else
+  echo "[init] Warning: Could not create or retrieve notification-dlq URL"
+fi
+
+echo "[init] Ensuring SQS queue: notification-queue with DLQ redrive policy"
+NOTIFICATION_DLQ_ARN="arn:aws:sqs:${AWS_REGION}:${ACCOUNT_ID}:notification-dlq"
+awslocal sqs create-queue \
+  --queue-name notification-queue \
+  --attributes RedrivePolicy='{"deadLetterTargetArn":"'"${NOTIFICATION_DLQ_ARN}"'","maxReceiveCount":"3"}',VisibilityTimeout=300,MessageRetentionPeriod=1209600,ReceiveMessageWaitTimeSeconds=20 \
+  >/dev/null 2>&1 || true
+
+echo "[init] Setting up CloudWatch alarms..."
+
+# CloudWatch alarm for file-processing-dlq (alert if any messages)
+echo "[init] Creating CloudWatch alarm: file-processing-dlq-depth"
+awslocal cloudwatch put-metric-alarm \
+  --alarm-name file-processing-dlq-depth \
+  --alarm-description "Alert when file-processing-dlq has messages (DLQ depth > 0)" \
+  --metric-name ApproximateNumberOfMessagesVisible \
+  --namespace AWS/SQS \
+  --statistic Average \
+  --period 60 \
+  --threshold 0 \
+  --comparison-operator GreaterThanThreshold \
+  --dimensions Name=QueueName,Value=file-processing-dlq \
+  >/dev/null 2>&1 || true
+
+# CloudWatch alarm for notification-dlq (alert if any messages)
+echo "[init] Creating CloudWatch alarm: notification-dlq-depth"
+awslocal cloudwatch put-metric-alarm \
+  --alarm-name notification-dlq-depth \
+  --alarm-description "Alert when notification-dlq has messages (DLQ depth > 0)" \
+  --metric-name ApproximateNumberOfMessagesVisible \
+  --namespace AWS/SQS \
+  --statistic Average \
+  --period 60 \
+  --threshold 0 \
+  --comparison-operator GreaterThanThreshold \
+  --dimensions Name=QueueName,Value=notification-dlq \
+  >/dev/null 2>&1 || true
+
 echo "[init] LocalStack AWS resource initialization complete."
