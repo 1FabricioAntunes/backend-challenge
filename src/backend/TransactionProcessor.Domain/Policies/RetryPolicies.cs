@@ -118,7 +118,7 @@ public static class RetryPolicies
                 retryCount: 3,
                 sleepDurationProvider: attempt =>
                     TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                onRetry: (outcome, timespan, retryCount, context) =>
+                onRetry: (exception, timespan, retryCount, context) =>
                 {
                     // Optional: Log retry attempt
                     var correlationId = context.ContainsKey("CorrelationId")
@@ -127,7 +127,7 @@ public static class RetryPolicies
 
                     System.Diagnostics.Debug.WriteLine(
                         $"[{correlationId}] Retry {retryCount} after {timespan.TotalSeconds}s delay. " +
-                        $"Exception: {outcome.Exception?.Message}");
+                        $"Exception: {exception?.Message}");
                 });
     }
 
@@ -223,29 +223,21 @@ public static class RetryPolicies
         return Policy
             .Handle<Exception>()
             .CircuitBreakerAsync(
-                handledEventsAllowedBeforeBreaking: 5,
+                exceptionsAllowedBeforeBreaking: 5,
                 durationOfBreak: TimeSpan.FromSeconds(30),
-                onBreak: (outcome, breakDuration, context) =>
+                onBreak: (exception, breakDuration) =>
                 {
                     // Optional: Log circuit break event
-                    var correlationId = context.ContainsKey("CorrelationId")
-                        ? context["CorrelationId"]
-                        : "unknown";
-
                     System.Diagnostics.Debug.WriteLine(
-                        $"[{correlationId}] Circuit breaker opened. " +
+                        $"Circuit breaker opened. " +
                         $"Breaking for {breakDuration.TotalSeconds}s. " +
-                        $"Reason: {outcome.Exception?.Message}");
+                        $"Reason: {exception?.Message}");
                 },
-                onReset: (context) =>
+                onReset: () =>
                 {
                     // Optional: Log circuit reset event
-                    var correlationId = context.ContainsKey("CorrelationId")
-                        ? context["CorrelationId"]
-                        : "unknown";
-
                     System.Diagnostics.Debug.WriteLine(
-                        $"[{correlationId}] Circuit breaker reset. Service recovered.");
+                        "Circuit breaker reset. Service recovered.");
                 });
     }
 
