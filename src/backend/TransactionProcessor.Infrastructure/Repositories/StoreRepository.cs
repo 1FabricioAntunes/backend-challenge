@@ -22,6 +22,7 @@ public class StoreRepository : IStoreRepository
     {
         return await _context.Stores
             .Include(s => s.Transactions)
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == id);
     }
 
@@ -34,14 +35,26 @@ public class StoreRepository : IStoreRepository
     public async Task<Store?> GetByNameAndOwnerAsync(string name, string ownerName)
     {
         return await _context.Stores
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Name == name && s.OwnerName == ownerName);
     }
 
     public async Task<IEnumerable<Store>> GetAllAsync()
     {
+        // Read-only optimization: AsNoTracking()
+        // Do not eager-load Transactions to reduce data transfer
         return await _context.Stores
             .AsNoTracking()
             .OrderBy(s => s.Name)
+            .Select(s => new Store
+            {
+                Id = s.Id,
+                OwnerName = s.OwnerName,
+                Name = s.Name,
+                CreatedAt = s.CreatedAt,
+                UpdatedAt = s.UpdatedAt,
+                // Balance is computed; not materialized here
+            })
             .ToListAsync();
     }
 
@@ -50,26 +63,34 @@ public class StoreRepository : IStoreRepository
     /// Note: Balance is not persisted; compute from transactions using GetSignedAmount()
     /// </summary>
     /// <param name="store">Store entity to create or update</param>
-    public async Task UpsertAsync(Store store)
+    public async Task AddAsync(Store store)
     {
-        var existing = await _context.Stores
-            .FirstOrDefaultAsync(s => s.Name == store.Name && s.OwnerName == store.OwnerName);
+        if (store == null)
+            throw new ArgumentNullException(nameof(store));
 
-        if (existing != null)
-        {
-            existing.UpdatedAt = DateTime.UtcNow;
-            _context.Stores.Update(existing);
-        }
-        else
-        {
-            await _context.Stores.AddAsync(store);
-        }
-
+        await _context.Stores.AddAsync(store);
         await _context.SaveChangesAsync();
     }
 
     public async Task UpdateAsync(Store store)
     {
+        if (store == null)
+            throw new ArgumentNullException(nameof(store));
+
+        _context.Stores.Update(store);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UpdateBalanceAsync(Guid storeId, decimal newBalance)
+    {
+        if (newBalance < 0)
+            throw new ArgumentException("Balance cannot be negative.", nameof(newBalance));
+
+        var store = await _context.Stores.FirstOrDefaultAsync(s => s.Id == storeId);
+        if (store == null)
+            throw new InvalidOperationException("Store not found.");
+
+        store.UpdateBalance(newBalance);
         _context.Stores.Update(store);
         await _context.SaveChangesAsync();
     }
@@ -80,7 +101,9 @@ public class StoreRepository : IStoreRepository
     /// </summary>
     public async Task<Store?> GetByCodeAsync(string code)
     {
-        // Code field removed in normalized schema; this returns null
+        // Not supported in normalized schema (composite key: Name + OwnerName)
+        // Kept for backwards compatibility with older callers.
+        // If a Code column is introduced, implement lookup here.
         return await Task.FromResult<Store?>(null);
     }
 }
