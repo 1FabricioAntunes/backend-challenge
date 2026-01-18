@@ -79,13 +79,8 @@ public class FileProcessingServiceIntegrationTests
         var fileName = "file.txt";
         var correlationId = Guid.NewGuid().ToString();
 
-        var file = new FileEntity
-        {
-            Id = fileId,
-            FileName = fileName,
-            StatusCode = FileStatusCode.Processed,
-            UploadedAt = DateTime.UtcNow
-        };
+        var file = new FileEntity(fileId, fileName);
+        file.MarkAsProcessed();
 
         _fileRepositoryMock
             .Setup(x => x.GetByIdAsync(fileId))
@@ -110,13 +105,7 @@ public class FileProcessingServiceIntegrationTests
         var fileName = "file.txt";
         var correlationId = Guid.NewGuid().ToString();
 
-        var file = new FileEntity
-        {
-            Id = fileId,
-            FileName = fileName,
-            StatusCode = FileStatusCode.Uploaded,
-            UploadedAt = DateTime.UtcNow
-        };
+        var file = new FileEntity(fileId, fileName);
 
         _fileRepositoryMock
             .Setup(x => x.GetByIdAsync(fileId))
@@ -161,13 +150,7 @@ public class FileProcessingServiceIntegrationTests
         var fileName = "file.txt";
         var correlationId = Guid.NewGuid().ToString();
 
-        var file = new FileEntity
-        {
-            Id = fileId,
-            FileName = fileName,
-            StatusCode = FileStatusCode.Uploaded,
-            UploadedAt = DateTime.UtcNow
-        };
+        var file = new FileEntity(fileId, fileName);
 
         _fileRepositoryMock
             .Setup(x => x.GetByIdAsync(fileId))
@@ -203,7 +186,7 @@ public class FileProcessingServiceIntegrationTests
             .ReturnsAsync(validationResult);
 
         _storeRepositoryMock
-            .Setup(x => x.GetByCodeAsync(It.IsAny<string>()))
+            .Setup(x => x.GetByNameAndOwnerAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((Store?)null);
 
         _transactionRepositoryMock
@@ -238,13 +221,7 @@ public class FileProcessingServiceIntegrationTests
         var fileName = "file.txt";
         var correlationId = Guid.NewGuid().ToString();
 
-        var file = new FileEntity
-        {
-            Id = fileId,
-            FileName = fileName,
-            StatusCode = FileStatusCode.Uploaded,
-            UploadedAt = DateTime.UtcNow
-        };
+        var file = new FileEntity(fileId, fileName);
 
         _fileRepositoryMock
             .Setup(x => x.GetByIdAsync(fileId))
@@ -277,13 +254,7 @@ public class FileProcessingServiceIntegrationTests
         var fileName = "file.txt";
         var correlationId = Guid.NewGuid().ToString();
 
-        var file = new FileEntity
-        {
-            Id = fileId,
-            FileName = fileName,
-            StatusCode = FileStatusCode.Uploaded,
-            UploadedAt = DateTime.UtcNow
-        };
+        var file = new FileEntity(fileId, fileName);
 
         _fileRepositoryMock
             .Setup(x => x.GetByIdAsync(fileId))
@@ -330,7 +301,7 @@ public class FileProcessingServiceIntegrationTests
             .ReturnsAsync(validationResult);
 
         _storeRepositoryMock
-            .Setup(x => x.GetByCodeAsync(It.IsAny<string>()))
+            .Setup(x => x.GetByNameAndOwnerAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((Store?)null);
 
         _transactionRepositoryMock
