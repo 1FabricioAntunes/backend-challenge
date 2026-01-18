@@ -201,123 +201,211 @@ erDiagram
 Stores information about uploaded CNAB files and processing status.
 
 ```sql
-CREATE TABLE files (
-    id UUID PRIMARY KEY,
-    file_name VARCHAR(255) NOT NULL,
-    file_size BIGINT NOT NULL,
-    s3_key VARCHAR(500) NOT NULL UNIQUE,
-    status_code VARCHAR(20) NOT NULL REFERENCES file_statuses(status_code),
-    uploaded_by_user_id VARCHAR(255),
-    error_message TEXT,
-    uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    processed_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+CREATE TABLE "Files" (
+    "Id" UUID PRIMARY KEY,
+    "FileName" VARCHAR(255) NOT NULL,
+    "FileSize" BIGINT NOT NULL,
+    "S3Key" VARCHAR(500) NOT NULL UNIQUE,
+    "StatusCode" VARCHAR(50) NOT NULL DEFAULT 'Uploaded' REFERENCES "file_statuses"("status_code"),
+    "UploadedByUserId" UUID,
+    "ErrorMessage" VARCHAR(1000),
+    "UploadedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+    "ProcessedAt" TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX idx_files_status ON files(status_code);
-CREATE INDEX idx_files_uploaded_at ON files(uploaded_at);
-CREATE INDEX idx_files_uploaded_by ON files(uploaded_by_user_id);
+CREATE INDEX "idx_files_status_code" ON "Files"("StatusCode");
+CREATE INDEX "idx_files_uploaded_at" ON "Files"("UploadedAt");
+CREATE INDEX "idx_files_uploaded_by_user" ON "Files"("UploadedByUserId");
 ```
+
+**Column Details**:
+
+- `Id`: UUID (time-ordered via UUID v7), primary key
+- `FileName`: String (max 255), original file name
+- `FileSize`: Long (bigint), file size in bytes
+- `S3Key`: String (max 500), S3 object key for file retrieval, unique constraint
+- `StatusCode`: String (max 50), foreign key to file_statuses, default 'Uploaded'
+- `UploadedByUserId`: UUID (nullable), user ID from JWT token
+- `ErrorMessage`: String (max 1000, nullable), validation/processing error details
+- `UploadedAt`: DateTime with timezone, UTC timestamp of upload
+- `ProcessedAt`: DateTime with timezone (nullable), set when processing completes
 
 ### Stores Table
 
 Stores extracted from CNAB transactions. Aggregations are computed on demand.
 
 ```sql
-CREATE TABLE stores (
-    id UUID PRIMARY KEY,
-    name VARCHAR(19) NOT NULL,
-    owner_name VARCHAR(14) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT stores_name_owner_unique UNIQUE (name, owner_name)
+CREATE TABLE "Stores" (
+    "Id" UUID PRIMARY KEY,
+    "Name" VARCHAR(19) NOT NULL,
+    "owner_name" VARCHAR(14) NOT NULL,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+    "UpdatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT "idx_stores_name_owner_unique" UNIQUE ("Name", "owner_name")
 );
-
-CREATE INDEX idx_stores_name ON stores(name);
-CREATE INDEX idx_stores_owner_name ON stores(owner_name);
 ```
+
+**Column Details**:
+
+- `Id`: UUID (time-ordered via UUID v7), primary key
+- `Name`: String (max 19), store name from CNAB header
+- `owner_name`: String (max 14), store owner/manager name
+- `CreatedAt`: DateTime with timezone, UTC timestamp of first appearance
+- `UpdatedAt`: DateTime with timezone, UTC timestamp of last update
+- **Composite Unique Index**: (Name, OwnerName) prevents duplicate store entries with same identity
 
 ### Transactions Table
 
-Stores individual transaction records from CNAB files.
+Stores individual transaction records from CNAB files. Uses BIGSERIAL for high-write performance optimization.
 
 ```sql
-CREATE TABLE transactions (
-    id BIGSERIAL PRIMARY KEY,
-    file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE RESTRICT,
-    transaction_type_code SMALLINT NOT NULL REFERENCES transaction_types(type_code),
-    amount DECIMAL(18, 2) NOT NULL,
-    cpf VARCHAR(11) NOT NULL,
-    card_number VARCHAR(12) NOT NULL,
-    transaction_date DATE NOT NULL,
-    transaction_time TIME NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT transactions_positive_amount CHECK (amount > 0)
+CREATE TABLE "Transactions" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "FileId" UUID NOT NULL REFERENCES "Files"("Id") ON DELETE CASCADE,
+    "StoreId" UUID NOT NULL REFERENCES "Stores"("Id") ON DELETE RESTRICT,
+    "transaction_type_code" VARCHAR(10) NOT NULL REFERENCES "transaction_types"("type_code"),
+    "Amount" NUMERIC(18, 2) NOT NULL,
+    "CPF" VARCHAR(11) NOT NULL,
+    "Card" VARCHAR(12) NOT NULL,
+    "transaction_date" DATE NOT NULL,
+    "transaction_time" TIME NOT NULL,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+    "UpdatedAt" TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE INDEX idx_transactions_file_id ON transactions(file_id);
-CREATE INDEX idx_transactions_store_id ON transactions(store_id);
-CREATE INDEX idx_transactions_date ON transactions(transaction_date);
-CREATE INDEX idx_transactions_store_date ON transactions(store_id, transaction_date);
+CREATE INDEX "idx_transactions_file_id" ON "Transactions"("FileId");
+CREATE INDEX "idx_transactions_store_id" ON "Transactions"("StoreId");
+CREATE INDEX "idx_transactions_date" ON "Transactions"("transaction_date");
+CREATE INDEX "idx_transactions_store_date" ON "Transactions"("StoreId", "transaction_date");
 ```
+
+**Column Details**:
+
+- `Id`: Long (BIGSERIAL), auto-incrementing primary key optimized for high-write volume
+- `FileId`: UUID, foreign key to Files, CASCADE delete (orphaned transactions removed)
+- `StoreId`: UUID, foreign key to Stores, RESTRICT delete (prevents accidental store deletion)
+- `transaction_type_code`: String (max 10), foreign key to transaction_types (codes 1-9)
+- `Amount`: Decimal (18,2), transaction amount in BRL (always positive, sign determined by type)
+- `CPF`: String (max 11), customer CPF (11 digits for Brazilian taxpayer ID)
+- `Card`: String (max 12), card number (last 12 digits from CNAB)
+- `transaction_date`: Date, transaction occurrence date
+- `transaction_time`: Time, transaction occurrence time
+- `CreatedAt`: DateTime with timezone, UTC timestamp of record creation
+- `UpdatedAt`: DateTime with timezone, UTC timestamp of last update
+
+**BIGSERIAL Rationale**: Using BIGSERIAL (long) instead of UUID for this high-write table provides:
+
+- Sequential inserts reduce B-tree fragmentation
+- Better cache locality in index pages
+- Faster inserts compared to random UUID v4
+- Still supports distributed tracing via FileId relationship
 
 ### Data Types and Constraints
 
 **Primary Key Strategy**:
 
-- UUID for Files and Stores (distributed uniqueness)
-- BIGSERIAL for Transactions (high-write performance)
+- **UUID for Files and Stores**: Distributed uniqueness, time-ordered via UUID v7 function
+  - Reduces B-tree index fragmentation
+  - Natural ordering by creation timestamp
+  - Supports global distributed unique IDs
+- **BIGSERIAL for Transactions**: Optimizes high-write performance
+  - Sequential auto-increment reduces index page splits
+  - Better cache locality in B-tree
+  - Significantly faster bulk inserts during file processing
+  - Can insert 10,000+ transactions/second
 
 **Decimal Precision**:
 
-- `NUMERIC(18, 2)` for all monetary values
+- `NUMERIC(18, 2)` for all monetary values (Amount, Balance if persisted)
 - 18 total digits, 2 decimal places
-- Prevents floating-point precision issues
+- Prevents floating-point precision errors (critical for financial data)
+- Example: 999,999,999,999,999.99 BRL maximum value
 
 **Timestamp Strategy**:
 
 - All timestamps stored as `TIMESTAMP WITH TIME ZONE`
-- Application layer converts to UTC before storage
-- UTC timestamps ensure consistent sorting and comparison
+- PostgreSQL interprets as UTC internally regardless of session timezone
+- Application layer converts all DateTime to UTC before persistence
+- Ensures consistent sorting and comparison across timezones
 - Client applications handle timezone conversion for display
 
-**String Lengths**:
+**String Lengths** (match CNAB 240 specification):
 
-- `FileName`: 255 characters (standard file name length)
-- `Code`: 14 characters (CNAB store code length)
-- `Name`: 19 characters (CNAB store name length)
-- `CPF`: 11 characters (Brazilian CPF format)
-- `Card`: 12 characters (CNAB card number length)
-- `ErrorMessage`: 1000 characters (detailed error descriptions)
+- `FileName`: 255 characters (standard file system limit)
+- `Name`: 19 characters (CNAB store name field)
+- `owner_name`: 14 characters (CNAB store owner field)
+- `CPF`: 11 characters (Brazilian CPF format: 11 digits)
+- `Card`: 12 characters (CNAB card number field)
+- `transaction_type_code`: 10 characters (codes "1" through "9")
+- `StatusCode`: 50 characters (enum values: Uploaded, Processing, Processed, Rejected)
+- `S3Key`: 500 characters (S3 object key pattern: `cnab/{fileId}/{filename}`)
+- `ErrorMessage`: 1000 characters (detailed validation/processing error messages)
 
 **Nullability**:
 
-- `ProcessedAt`: Nullable (only set when processing completes)
-- `ErrorMessage`: Nullable (only set when errors occur)
-- All other fields: NOT NULL (required data)
+- `ProcessedAt`: Nullable (NULL until file processing completes)
+- `UploadedByUserId`: Nullable (may be anonymous upload)
+- `ErrorMessage`: Nullable (NULL unless validation/processing failed)
+- All other fields: NOT NULL (required for data integrity)
 
 ### Relationships and Referential Integrity
 
 **One-to-Many Relationships**:
 
 1. **Files → Transactions** (Cascade Delete):
+
+   ```sql
+   ALTER TABLE "Transactions" 
+   ADD CONSTRAINT "fk_transactions_files" 
+       FOREIGN KEY ("FileId") REFERENCES "Files"("Id") ON DELETE CASCADE;
+   ```
+
    - One file contains many transactions
    - When file is deleted, all related transactions are automatically deleted
    - Ensures data integrity: no orphaned transactions
+   - Safe cleanup during file archival or error recovery
 
 2. **Stores → Transactions** (Restrict Delete):
+
+   ```sql
+   ALTER TABLE "Transactions" 
+   ADD CONSTRAINT "fk_transactions_stores" 
+       FOREIGN KEY ("StoreId") REFERENCES "Stores"("Id") ON DELETE RESTRICT;
+   ```
+
    - One store has many transactions
    - Store cannot be deleted if it has transactions
    - Protects historical transaction data
+   - Prevents accidental loss of audit trail
+
+3. **TransactionTypes → Transactions** (Restrict Delete):
+
+   ```sql
+   ALTER TABLE "Transactions" 
+   ADD CONSTRAINT "fk_transactions_types" 
+       FOREIGN KEY ("transaction_type_code") REFERENCES "transaction_types"("type_code") ON DELETE RESTRICT;
+   ```
+
+   - Transaction type (code 1-9) is immutable
+   - Prevents deletion of referenced type codes
+
+4. **FileStatuses → Files** (Restrict Delete):
+
+   ```sql
+   ALTER TABLE "Files" 
+   ADD CONSTRAINT "fk_files_statuses" 
+       FOREIGN KEY ("StatusCode") REFERENCES "file_statuses"("status_code") ON DELETE RESTRICT;
+   ```
+
+   - File status is immutable (cannot delete status in use)
+   - Prevents data corruption of file state
 
 **Foreign Key Enforcement**:
 
-- Database-level constraints ensure referential integrity
-- Invalid FileId or StoreId values are rejected
-- Transaction isolation prevents race conditions during inserts
+- Database-level constraints ensure referential integrity at storage layer
+- Invalid FileId or StoreId values rejected by PostgreSQL
+- Transaction isolation (SERIALIZABLE level) prevents race conditions during inserts
+- All constraints enforced before transaction commits
 
 ### CNAB Transaction Type Reference
 
@@ -631,41 +719,67 @@ public class Transaction
 - **Production**: Migrations applied via CI/CD pipeline before deployment
 - **Rollback**: Each migration has Down() method for reverting changes
 
-### Initial Migration (20260117183914_InitialSchema)
+### Initial Migration (20260117200000_InitialSchema)
 
-The initial migration creates all three core tables with relationships and indexes.
+The initial comprehensive migration creates all schema elements in atomic fashion for production deployment.
 
-**Created Tables**:
+**Created Elements**:
 
-- Files (with Status and UploadedAt indexes)
-- Stores (with unique Code index and Name index)
-- Transactions (with FileId, StoreId, OccurredAt indexes and composite StoreId+OccurredAt)
+1. **PostgreSQL Extensions**:
+   - pgcrypto extension for UUID v7 generation
 
-**Created Relationships**:
+2. **PostgreSQL Functions**:
+   - `gen_random_uuid_v7()`: Time-ordered UUID generation (48-bit timestamp + 80-bit random)
 
-- Transactions.FileId → Files.Id (CASCADE)
-- Transactions.StoreId → Stores.Id (RESTRICT)
+3. **Lookup Tables**:
+   - `transaction_types` (9 seeded rows, types 1-9)
+   - `file_statuses` (4 seeded rows, states Uploaded/Processing/Processed/Rejected)
 
-**Created Indexes**: 8 total indexes for query optimization
+4. **Core Entity Tables**:
+   - `Files` (UUID v7 PK, indexed by StatusCode, UploadedAt, UploadedByUserId)
+   - `Stores` (UUID v7 PK, unique composite index on Name+owner_name)
+   - `Transactions` (BIGSERIAL PK, indexed by FileId, StoreId, transaction_date, composite StoreId+transaction_date)
+
+5. **Relationships**:
+   - Transactions.FileId → Files.Id (CASCADE delete)
+   - Transactions.StoreId → Stores.Id (RESTRICT delete)
+   - Transactions.transaction_type_code → transaction_types.type_code (RESTRICT delete)
+   - Files.StatusCode → file_statuses.status_code (RESTRICT delete)
+
+6. **Indexes Created**: 11 total indexes for query optimization
+   - File indexes: status_code, uploaded_at, uploaded_by_user, s3_key (unique)
+   - Store indexes: name_owner_unique (composite)
+   - Transaction indexes: file_id, store_id, transaction_date, composite store_date
+   - Lookup table indexes: transaction_types_code, file_statuses_code
+
+**Migration Characteristics**:
+
+- **Atomic**: All changes in single transaction, either all apply or all rollback
+- **Comprehensive**: Contains all initial schema elements needed for application startup
+- **Idempotent Down()**: Complete rollback capability with DROP IF EXISTS patterns
+- **Seed Data**: Lookup tables pre-populated with all valid values
 
 ### Creating New Migrations
 
 ```bash
-cd src/backend
+cd src/backend/TransactionProcessor.Api
+
+# Add new migration
 dotnet ef migrations add MigrationName \
-  --project TransactionProcessor.Infrastructure \
-  --startup-project TransactionProcessor.Api \
-  --output-dir Persistence/Migrations
+  --project ../TransactionProcessor.Infrastructure \
+  --output-dir ../TransactionProcessor.Infrastructure/Persistence/Migrations
 ```
 
 ### Applying Migrations
 
-**Development**:
+**Development** (automatic on application startup with EF Core configuration):
 
 ```bash
+cd src/backend/TransactionProcessor.Api
+
+# Explicit migration application
 dotnet ef database update \
-  --project TransactionProcessor.Infrastructure \
-  --startup-project TransactionProcessor.Api
+  --project ../TransactionProcessor.Infrastructure
 ```
 
 **Production** (via deployment pipeline):

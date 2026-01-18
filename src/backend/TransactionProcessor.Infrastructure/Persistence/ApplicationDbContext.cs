@@ -172,6 +172,10 @@ public class ApplicationDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(1)
                 .HasComment("+ for income, - for expense; source of truth for sign determination");
+
+            // Index on primary key for lookup performance
+            // Primary key index ensures fast queries by type code (1-9)
+            entity.HasIndex(e => e.TypeCode).HasDatabaseName("idx_transaction_types_code");
         });
 
         // FileStatus lookup table configuration (database-driven business logic)
@@ -189,6 +193,10 @@ public class ApplicationDbContext : DbContext
                 .IsRequired()
                 .HasColumnName("is_terminal")
                 .HasComment("true if Processed or Rejected (terminal state)");
+
+            // Index on primary key for lookup performance
+            // Primary key index ensures fast queries by status code (Uploaded, Processing, Processed, Rejected)
+            entity.HasIndex(e => e.StatusCode).HasDatabaseName("idx_file_statuses_code");
         });
 
         // Store entity configuration (composite unique key, no persisted balance)

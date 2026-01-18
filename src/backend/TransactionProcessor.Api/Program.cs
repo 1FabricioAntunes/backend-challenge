@@ -13,7 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Database Configuration
 // Get connection string from appsettings or environment variables
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Host=localhost;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres";
 
 // Configure Entity Framework Core with PostgreSQL
