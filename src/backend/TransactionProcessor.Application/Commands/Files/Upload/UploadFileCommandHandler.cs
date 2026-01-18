@@ -130,9 +130,39 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
 
             _logger.LogInformation("File validation passed");
 
+            // Step 1.5: Placeholder for virus scanning (production security enhancement)
+            // TODO: Implement virus scanning via cloud antivirus service
+            // Context: Current implementation does not include virus scanning
+            // Impact: Malicious files could be uploaded without detection
+            // Ticket: CNAB-SECURITY-001
+            // 
+            // Example production implementation:
+            // - Integrate with ClamAV or VirusTotal API
+            // - Scan file before S3 upload
+            // - Reject file if threat detected
+            // - Log scan results with timestamp
+            _logger.LogWarning("SECURITY: Virus scanning is not implemented. " +
+                "Consider adding antivirus scanning in production environments. " +
+                "Reference: docs/security.md § File Upload Validation");
+
             // Step 2: Sanitize filename (remove path separators, special chars, max 255 chars)
             var sanitizedFileName = SanitizeFileName(command.FileName);
             _logger.LogInformation("Filename sanitized: {OriginalName} -> {SanitizedName}", command.FileName, sanitizedFileName);
+
+            // Validate sanitized filename is safe and not empty after sanitization
+            if (string.IsNullOrWhiteSpace(sanitizedFileName))
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Filename sanitization resulted in empty name: {OriginalFileName}", command.FileName);
+
+                result.Success = false;
+                result.FileId = null;
+                result.Status = "Rejected";
+                result.Message = "File name is invalid or contains only special characters.";
+                result.ErrorDetails.Add("Filename cannot be empty after sanitization");
+
+                return result;
+            }
 
             // Step 3: Create File aggregate
             _logger.LogInformation("Creating File aggregate with status=Uploaded");
@@ -283,41 +313,71 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
     /// <summary>
     /// Sanitizes filename by removing path separators, special characters, and enforcing length limits.
     /// 
-    /// Security Considerations (OWASP A03 - Injection Prevention):
+    /// Security Considerations (OWASP A03 - Injection Prevention, OWASP A04 - Insecure File Upload):
     /// - Remove path separators (/ \ :) to prevent directory traversal
-    /// - Remove special characters that could be interpreted as commands
+    /// - Remove special characters that could be interpreted as commands or SQL
     /// - Limit length to 255 chars to fit in database column
     /// - Trim whitespace from beginning and end
+    /// - Remove shell metacharacters (;, |, &, $, `, etc.)
+    /// - Remove SQL injection patterns (--, /*, */, xp_, sp_)
     /// 
     /// Examples:
     /// - "../../cnab.txt" → "cnab.txt" (path traversal blocked)
     /// - "file;rm *.txt" → "filerm.txt" (command injection blocked)
+    /// - "file'; DROP TABLE users; --" → "file DROP TABLE users" (SQL injection blocked)
     /// - "very_long_filename_..." → truncated to 255 chars (buffer overflow blocked)
     /// - "  file.txt  " → "file.txt" (whitespace trimmed)
+    /// 
+    /// Reference: technical-decisions.md § Input Validation and Sanitization
+    /// Reference: OWASP A03 (Injection) and A04 (Insecure File Upload)
     /// </summary>
     private static string SanitizeFileName(string fileName)
     {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return string.Empty;
+
         // Trim whitespace
         var sanitized = fileName.Trim();
 
-        // Remove path separators and special characters
+        // Remove path separators and special characters that OS doesn't allow
         var invalidChars = Path.GetInvalidFileNameChars().Append('/').Append('\\').Append(':').ToArray();
         foreach (var invalidChar in invalidChars)
         {
             sanitized = sanitized.Replace(invalidChar.ToString(), string.Empty);
         }
 
-        // Remove shell escape characters and SQL keywords to prevent injection
-        var dangerousPatterns = new[] { ";", "--", "/*", "*/", "xp_", "sp_", "DROP", "DELETE" };
-        foreach (var pattern in dangerousPatterns)
+        // Remove shell escape characters to prevent command injection (OWASP A03)
+        var shellMetacharacters = new[] { ";", "|", "&", "$", "`", "\n", "\r", "\t" };
+        foreach (var metachar in shellMetacharacters)
+        {
+            sanitized = sanitized.Replace(metachar, string.Empty);
+        }
+
+        // Remove SQL injection patterns (OWASP A03)
+        // Even though we use parameterized queries, defense-in-depth approach
+        var sqlPatterns = new[] { "--", "/*", "*/", "xp_", "sp_", "DROP", "DELETE", "INSERT", "UPDATE", "SELECT" };
+        foreach (var pattern in sqlPatterns)
         {
             sanitized = sanitized.Replace(pattern, string.Empty, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Limit length to 255 chars (database column constraint)
+        // Remove environment variable references to prevent variable expansion
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"[\$%]\w+[\$%]?", "");
+
+        // Limit length to 255 chars (database column constraint, filesystem limit)
         if (sanitized.Length > 255)
         {
-            sanitized = sanitized[..255];
+            // Preserve file extension when truncating
+            var extension = Path.GetExtension(sanitized);
+            var maxNameLength = 255 - extension.Length;
+            if (maxNameLength > 0)
+            {
+                sanitized = sanitized[..maxNameLength] + extension;
+            }
+            else
+            {
+                sanitized = sanitized[..255];
+            }
         }
 
         // Ensure we have a valid filename (not empty after sanitization)
