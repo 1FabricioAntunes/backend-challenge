@@ -43,18 +43,10 @@ public class StoreRepository : IStoreRepository
     {
         // Read-only optimization: AsNoTracking()
         // Do not eager-load Transactions to reduce data transfer
+        // Returns Store entities without Transactions collection populated
         return await _context.Stores
             .AsNoTracking()
             .OrderBy(s => s.Name)
-            .Select(s => new Store
-            {
-                Id = s.Id,
-                OwnerName = s.OwnerName,
-                Name = s.Name,
-                CreatedAt = s.CreatedAt,
-                UpdatedAt = s.UpdatedAt,
-                // Balance is computed; not materialized here
-            })
             .ToListAsync();
     }
 
