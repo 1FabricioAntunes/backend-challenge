@@ -12,10 +12,13 @@ type UploadResponse = {
 const FileUploadComponent = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadSpeed, setUploadSpeed] = useState<number | null>(null); // bytes/sec
+  const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadStartRef = useRef<number | null>(null);
 
   const resetState = useCallback(() => {
     setSelectedFile(null);
@@ -23,6 +26,9 @@ const FileUploadComponent = () => {
     setUploadStatus('idle');
     setErrorMessage(null);
     setUploadedFileId(null);
+    setUploadSpeed(null);
+    setEtaSeconds(null);
+    uploadStartRef.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -52,7 +58,7 @@ const FileUploadComponent = () => {
       setUploadedFileId(null);
       setUploadProgress(0);
     },
-    [resetState, validateFile]
+    [resetState]
   );
 
   const handleUpload = useCallback(
@@ -69,6 +75,9 @@ const FileUploadComponent = () => {
       setErrorMessage(null);
       setUploadedFileId(null);
       setUploadProgress(0);
+      setUploadSpeed(null);
+      setEtaSeconds(null);
+      uploadStartRef.current = performance.now();
 
       try {
         const formData = new FormData();
@@ -82,6 +91,19 @@ const FileUploadComponent = () => {
             if (!progressEvent.total) return;
             const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
             setUploadProgress(percent);
+
+            const startedAt = uploadStartRef.current;
+            if (startedAt) {
+              const elapsedSeconds = (performance.now() - startedAt) / 1000;
+              if (elapsedSeconds > 0) {
+                const speedBytesPerSec = progressEvent.loaded / elapsedSeconds;
+                setUploadSpeed(speedBytesPerSec);
+
+                const remainingBytes = progressEvent.total - progressEvent.loaded;
+                const eta = speedBytesPerSec > 0 ? remainingBytes / speedBytesPerSec : null;
+                setEtaSeconds(typeof eta === 'number' && Number.isFinite(eta) ? eta : null);
+              }
+            }
           },
         });
 
@@ -141,7 +163,12 @@ const FileUploadComponent = () => {
           >
             {uploadStatus === 'uploading' ? 'Uploading...' : 'Upload'}
           </button>
-          <button type="button" onClick={handleReset} style={{ padding: '10px 16px' }}>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={uploadStatus === 'uploading'}
+            style={{ padding: '10px 16px', cursor: uploadStatus === 'uploading' ? 'not-allowed' : 'pointer' }}
+          >
             Reset
           </button>
         </div>
@@ -150,6 +177,12 @@ const FileUploadComponent = () => {
           <div style={{ display: 'grid', gap: '6px' }}>
             <progress value={uploadProgress} max={100} style={{ width: '100%' }} />
             <span style={{ fontSize: '0.9rem' }}>Uploading: {uploadProgress}%</span>
+            {uploadSpeed && (
+              <span style={{ fontSize: '0.85rem', color: '#444' }}>
+                ~{(uploadSpeed / 1024).toFixed(1)} KB/s
+                {etaSeconds !== null && Number.isFinite(etaSeconds) ? ` · ETA ~${Math.max(1, Math.round(etaSeconds))}s` : ''}
+              </span>
+            )}
           </div>
         )}
 
