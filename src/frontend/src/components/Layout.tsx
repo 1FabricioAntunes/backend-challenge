@@ -1,6 +1,7 @@
 import React from 'react';
 import Sidebar from './Sidebar';
 import '../styles/Layout.css';
+import '../styles/responsive.css';
 
 interface LayoutProps {
   children: React.ReactNode;
