@@ -120,7 +120,6 @@ public static class SecretsManagementExtensions
         {
             Log.Warning(ex, "[{CorrelationId}] OAuth secrets not found - skipping (optional in development)", 
                 correlationId);
-            appSecrets.OAuth = null;
         }
 
         return appSecrets;
