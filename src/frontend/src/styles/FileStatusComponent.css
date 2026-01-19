@@ -218,6 +218,15 @@
   letter-spacing: 0.02em;
 }
 
+.status-badge__icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.status-badge__label {
+  line-height: 1.1;
+}
+
 .badge--info {
   background: #e7f0ff;
   color: #1d4ed8;

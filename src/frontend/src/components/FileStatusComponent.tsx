@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
+import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileStatusComponent.css';
-
-type FileStatus = 'Uploaded' | 'Processing' | 'Processed' | 'Rejected';
 
 type FileRecord = {
   id: string;
@@ -42,30 +41,16 @@ const seedFiles: FileRecord[] = [
     status: 'Uploaded',
   },
 ];
-
-const statusTone: Record<FileStatus, string> = {
-  Uploaded: 'badge--info',
-  Processing: 'badge--warning',
-  Processed: 'badge--success',
-  Rejected: 'badge--danger',
-};
-
-const statusLabel: Record<FileStatus, string> = {
-  Uploaded: 'Uploaded',
-  Processing: 'Processing',
-  Processed: 'Processed',
-  Rejected: 'Rejected',
-};
-
 const formatDateTime = (value: string) => {
-  return new Date(value).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const date = new Date(value);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const day = pad(date.getDate());
+  const month = pad(date.getMonth() + 1);
+  const year = date.getFullYear();
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 };
 
 export default function FileStatusComponent() {
@@ -166,9 +151,7 @@ export default function FileStatusComponent() {
                   <p className="file-date">{formatDateTime(file.uploadTime)}</p>
                 </div>
                 <div className="table__cell" role="cell">
-                  <span className={`status-badge ${statusTone[file.status]}`}>
-                    {statusLabel[file.status]}
-                  </span>
+                  <StatusBadge status={file.status} />
                 </div>
                 <div className="table__cell table__cell--right" role="cell">
                   {typeof file.transactionCount === 'number' ? file.transactionCount : '—'}
@@ -189,9 +172,7 @@ export default function FileStatusComponent() {
                 <div className="detail-item">
                   <p className="detail-label">Status</p>
                   <p className="detail-value">
-                    <span className={`status-badge ${statusTone[selectedFile.status]}`}>
-                      {statusLabel[selectedFile.status]}
-                    </span>
+                    <StatusBadge status={selectedFile.status} />
                   </p>
                 </div>
                 <div className="detail-item">
