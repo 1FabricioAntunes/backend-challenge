@@ -241,17 +241,22 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(file_processing_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(file_processing_duration_seconds_bucket[5m]))",
           "refId": "A",
+          "legendFormat": "File Processing Duration (p50)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(file_processing_duration_seconds_bucket[5m]))",
+          "refId": "B",
           "legendFormat": "File Processing Duration (p95)"
         },
         {
           "expr": "histogram_quantile(0.99, rate(file_processing_duration_seconds_bucket[5m]))",
-          "refId": "B",
+          "refId": "C",
           "legendFormat": "File Processing Duration (p99)"
         }
       ],
-      "title": "File Processing Duration (95th/99th percentile)",
+      "title": "File Processing Duration (p50/p95/p99 percentiles)",
       "type": "timeseries"
     },
     {
@@ -418,12 +423,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total[5m])) by (status_code)",
+          "expr": "sum(rate(http_requests_total[5m])) by (endpoint)",
           "refId": "A",
-          "legendFormat": "Status {{status_code}}"
+          "legendFormat": "{{endpoint}}"
         }
       ],
-      "title": "HTTP Requests by Status Code (requests/sec)",
+      "title": "HTTP Requests by Endpoint (requests/sec)",
       "type": "timeseries"
     },
     {
@@ -571,6 +576,253 @@
       ],
       "title": "Error Distribution by Type",
       "type": "piechart"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "Duration (milliseconds)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m])) * 1000",
+          "refId": "A",
+          "legendFormat": "DB Query p95 ({{operation}}/{{entity}})"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(database_query_duration_seconds_bucket[5m])) * 1000",
+          "refId": "B",
+          "legendFormat": "DB Query p99 ({{operation}}/{{entity}})"
+        }
+      ],
+      "title": "Database Query Duration (95th/99th percentile, ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "Messages",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "expr": "dlq_depth{queue=\"file-processing-dlq\"}",
+          "refId": "A",
+          "legendFormat": "File Processing DLQ"
+        },
+        {
+          "expr": "dlq_depth{queue=\"notification-dlq\"}",
+          "refId": "B",
+          "legendFormat": "Notification DLQ"
+        }
+      ],
+      "title": "DLQ Depth by Queue (messages)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "fields": "",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "text": {},
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "expr": "active_http_requests{}",
+          "refId": "A",
+          "legendFormat": "Active Requests"
+        }
+      ],
+      "title": "Active HTTP Requests (gauge)",
+      "type": "stat"
     }
   ],
   "schemaVersion": 27,
@@ -590,5 +842,6 @@
   "timezone": "",
   "title": "Transaction Processor Metrics",
   "uid": "transaction-processor-main",
-  "version": 1
+  "version": 1,
+  "refresh": "30s"
 }
