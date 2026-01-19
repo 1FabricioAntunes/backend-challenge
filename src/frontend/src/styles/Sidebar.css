@@ -1,0 +1,265 @@
+/* ==============================================
+   Sidebar Navigation Styles
+   Responsive navigation with active states
+   ============================================== */
+
+/* Hamburger Button - Mobile Only */
+.hamburger-button {
+  display: none; /* Hidden on desktop */
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 110;
+  width: 44px;
+  height: 44px;
+  padding: 0.5rem;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.hamburger-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 0.375rem;
+}
+
+.hamburger-button:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Hamburger Icon Animation */
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 18px;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background-color: #2d3748;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+/* Hamburger Open State */
+.hamburger-icon.open span:nth-child(1) {
+  transform: translateY(7.5px) rotate(45deg);
+}
+
+.hamburger-icon.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-icon.open span:nth-child(3) {
+  transform: translateY(-7.5px) rotate(-45deg);
+}
+
+/* Sidebar Container */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Sidebar Navigation List */
+.sidebar-nav {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+}
+
+.sidebar-nav li {
+  margin: 0;
+}
+
+/* Sidebar Links */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.5rem;
+  color: #4a5568;
+  text-decoration: none;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-link:hover {
+  background-color: #f7fafc;
+  color: #2d3748;
+}
+
+/* Active Link State */
+.sidebar-link.active {
+  background-color: #edf2f7;
+  color: #667eea;
+  border-left-color: #667eea;
+}
+
+.sidebar-link.active .sidebar-icon {
+  opacity: 1;
+}
+
+/* Focus State */
+.sidebar-link:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+  background-color: #f7fafc;
+}
+
+/* Sidebar Icons */
+.sidebar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 1.125rem;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.sidebar-link:hover .sidebar-icon {
+  opacity: 1;
+}
+
+/* Sidebar Text */
+.sidebar-text {
+  flex: 1;
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  margin-top: auto;
+}
+
+.sidebar-footer-text {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #a0aec0;
+  text-align: center;
+}
+
+/* Mobile Overlay */
+.sidebar-overlay {
+  display: none;
+}
+
+/* ==============================================
+   Responsive Design - Mobile
+   ============================================== */
+
+@media (max-width: 768px) {
+  /* Show Hamburger Button */
+  .hamburger-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Hide Sidebar by Default on Mobile */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -280px; /* Hidden off-screen */
+    width: 280px;
+    height: 100vh;
+    z-index: 100;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    transition: left 0.3s ease;
+  }
+
+  /* Show Sidebar When Open */
+  .sidebar.mobile-open {
+    left: 0;
+  }
+
+  /* Mobile Overlay - Semi-transparent background */
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Adjust link padding for mobile */
+  .sidebar-link {
+    padding: 1rem 1.5rem;
+  }
+}
+
+/* Tablet: 768px - 1024px */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .sidebar-link {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .sidebar-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 1rem;
+  }
+}
+
+/* ==============================================
+   Accessibility
+   ============================================== */
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .sidebar-link {
+    border: 1px solid transparent;
+  }
+
+  .sidebar-link:hover,
+  .sidebar-link.active {
+    border-color: currentColor;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar-link,
+  .hamburger-icon span,
+  .sidebar-overlay {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Focus Visible Support */
+@supports selector(:focus-visible) {
+  .sidebar-link:focus {
+    outline: none;
+  }
+}

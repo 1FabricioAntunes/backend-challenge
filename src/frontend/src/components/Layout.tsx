@@ -1,4 +1,5 @@
 import React from 'react';
+import Sidebar from './Sidebar';
 import '../styles/Layout.css';
 
 interface LayoutProps {
@@ -54,12 +55,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, pageTitle }) => {
 
       {/* Main content area - two-column grid */}
       <main className="layout-main">
-        {/* Sidebar slot - will contain navigation */}
+        {/* Sidebar Navigation */}
         <aside className="layout-sidebar" aria-label="Main navigation">
-          {/* Sidebar content will be added in next step */}
-          <nav className="sidebar-placeholder">
-            <p>Navigation</p>
-          </nav>
+          <Sidebar />
         </aside>
 
         {/* Content area */}
