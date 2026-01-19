@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
+import axios from 'axios';
 
 // TypeScript Interfaces
 interface Store {
@@ -106,46 +107,74 @@ const StoreBalanceComponent = () => {
   );
 
   /**
-   * Refresh balances from API (stub - will be implemented in next step)
-   * Currently uses sample data and simulates loading state
+   * Map API errors to user-friendly Portuguese messages
    */
-  const refreshBalances = useCallback(async () => {
+  const mapErrorMessage = (error: unknown): string => {
+    if (axios.isAxiosError(error)) {
+      if (!error.response) {
+        return 'Erro de conexão. Verifique sua internet.';
+      }
+
+      if (error.response.status === 500) {
+        return 'Erro no servidor. Tente novamente.';
+      }
+
+      if (error.response.status === 400) {
+        return 'Requisição inválida. Verifique os parâmetros.';
+      }
+
+      if (error.response.status === 404) {
+        return 'Endpoint não encontrado.';
+      }
+    }
+
+    return 'Erro ao carregar lojas. Tente novamente.';
+  };
+
+  /**
+   * Fetch stores from API
+   * Calls GET /api/stores/v1 and updates component state
+   */
+  const fetchStores = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // TODO: Replace with actual API call to GET /api/stores/v1
-      // For now, simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const response = await axios.get('/api/stores/v1');
+      const { stores: apiStores } = response.data;
 
-      // In production: const response = await apiClient.get('/stores/v1');
-      // For now, use sample data
-      const newStores = [...SAMPLE_STORES];
-      setStores(newStores);
+      setStores(apiStores);
 
       // Re-apply current filters and sorting
       const searchLower = searchText.toLowerCase();
-      const filtered = newStores.filter(
-        (store) =>
+      const filtered = apiStores.filter(
+        (store: Store) =>
           store.code.toLowerCase().includes(searchLower) ||
           store.name.toLowerCase().includes(searchLower)
       );
 
       sortStores(sortField, sortOrder, filtered);
     } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : 'Failed to refresh store balances';
+      const errorMsg = mapErrorMessage(err);
       setError(errorMsg);
+      console.error('Error fetching stores:', err);
     } finally {
       setIsLoading(false);
     }
   }, [searchText, sortField, sortOrder, sortStores]);
 
+  /**
+   * Refresh balances by fetching from API
+   * Wrapper around fetchStores for user-triggered refresh
+   */
+  const refreshBalances = useCallback(() => {
+    fetchStores();
+  }, [fetchStores]);
+
   // Load initial data on component mount
   useEffect(() => {
-    // Initial sort
-    sortStores(sortField, sortOrder);
-  }, []);
+    fetchStores();
+  }, [fetchStores]);
 
   const totalBalance = calculateTotalBalance(filteredStores);
   const hasStores = filteredStores.length > 0;
