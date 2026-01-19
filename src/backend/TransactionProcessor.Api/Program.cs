@@ -2,7 +2,9 @@ using FastEndpoints;
 using FastEndpoints.Swagger;
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using NSwag;
 using Serilog;
 using System.Text.Json;
@@ -10,6 +12,7 @@ using System.Text.Json.Serialization;
 using TransactionProcessor.Api.Exceptions;
 using TransactionProcessor.Api.Extensions;
 using TransactionProcessor.Api.Middleware;
+using TransactionProcessor.Api.Models;
 using TransactionProcessor.Application.Queries.Files;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Infrastructure.Metrics;
@@ -116,6 +119,126 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(opts =>
 builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
 
 // ============================================================================
+// AUTHENTICATION & AUTHORIZATION CONFIGURATION
+// ============================================================================
+// Configure OAuth2/JWT authentication with AWS Cognito
+Log.Information("[{CorrelationId}] Configuring authentication with Cognito", startupCorrelationId);
+
+// Load authentication options from configuration
+var authOptions = builder.Configuration.GetSection("AWS:Cognito").Get<AuthenticationOptions>()
+    ?? throw new InvalidOperationException("Cognito configuration is missing from appsettings");
+
+// Validate authentication configuration (fail-fast pattern)
+authOptions.Validate();
+
+// Register authentication options for dependency injection
+builder.Services.AddSingleton(authOptions);
+
+// Configure JWT Bearer authentication
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    // OAuth2 authority (token issuer)
+    // LocalStack: http://localhost:4566
+    // AWS Cognito: https://cognito-idp.{region}.amazonaws.com/{userPoolId}
+    options.Authority = authOptions.Authority;
+    
+    // Audience validation ('aud' claim in JWT)
+    // OWASP A01: Broken Access Control prevention
+    options.Audience = authOptions.Audience;
+    
+    // HTTPS metadata requirement
+    // Production: true (HTTPS enforcement for OIDC metadata)
+    // LocalStack: false (HTTP only in local development)
+    // OWASP A02: Cryptographic Failures mitigation
+    options.RequireHttpsMetadata = authOptions.RequireHttpsMetadata;
+    
+    // Save token in AuthenticationProperties for later use
+    options.SaveToken = true;
+    
+    // Token validation parameters
+    // Reference: technical-decisions.md JWT Security Considerations
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        // ✅ Validate token signature using RS256
+        // CVE-2015-9235: Algorithm confusion attack prevention
+        ValidateIssuerSigningKey = authOptions.ValidateIssuerSigningKey,
+        
+        // ✅ Validate issuer ('iss' claim)
+        // JWT Security: Prevent token substitution attacks
+        ValidateIssuer = authOptions.ValidateIssuer,
+        ValidIssuer = authOptions.Authority,
+        
+        // ✅ Validate audience ('aud' claim)
+        // OWASP A01: Prevent token reuse across APIs
+        ValidateAudience = authOptions.ValidateAudience,
+        ValidAudience = authOptions.Audience,
+        
+        // ✅ Validate token lifetime (exp, nbf claims)
+        // OWASP A07: Identification and Authentication Failures prevention
+        ValidateLifetime = authOptions.ValidateLifetime,
+        
+        // ✅ Clock skew tolerance (5 minutes default)
+        // JWT Security: Reasonable tolerance for time differences
+        ClockSkew = authOptions.ClockSkew,
+        
+        // ✅ Require expiration ('exp' claim must exist)
+        // JWT Security: All tokens must have expiration
+        RequireExpirationTime = true,
+        
+        // ✅ Require signed tokens (reject alg: none)
+        // CVE-2015-9235: Algorithm confusion attack prevention
+        RequireSignedTokens = true,
+        
+        // ✅ Valid algorithms: RS256 only
+        // JWT Security: Prevent weak algorithm attacks
+        ValidAlgorithms = new[] { SecurityAlgorithms.RsaSha256 }
+    };
+    
+    // Event handlers for authentication lifecycle
+    options.Events = new JwtBearerEvents
+    {
+        // Log authentication failures for security monitoring
+        OnAuthenticationFailed = context =>
+        {
+            Log.Warning(
+                "JWT authentication failed: {Exception}. Token: {Token}",
+                context.Exception.Message,
+                context.Request.Headers.Authorization.ToString().Substring(0, Math.Min(20, context.Request.Headers.Authorization.ToString().Length)) + "...");
+            return Task.CompletedTask;
+        },
+        
+        // Log successful token validation
+        OnTokenValidated = context =>
+        {
+            var userId = context.Principal?.FindFirst("sub")?.Value ?? "unknown";
+            Log.Information("JWT token validated successfully for user: {UserId}", userId);
+            return Task.CompletedTask;
+        },
+        
+        // Handle challenge (401 Unauthorized)
+        OnChallenge = context =>
+        {
+            Log.Warning(
+                "JWT authentication challenge: {Error}. Path: {Path}",
+                context.Error ?? "No token provided",
+                context.Request.Path);
+            return Task.CompletedTask;
+        }
+    };
+});
+
+// Add authorization services
+builder.Services.AddAuthorization();
+
+Log.Information("[{CorrelationId}] Authentication configured: Authority={Authority}, Audience={Audience}",
+    startupCorrelationId, authOptions.Authority, authOptions.Audience);
+
+// ============================================================================
 // SWAGGER/OPENAPI DOCUMENTATION
 // ============================================================================
 // Configure NSwag for OpenAPI documentation
@@ -153,6 +276,19 @@ app.UseSecurityHeaders();
 
 // Add metrics middleware (track HTTP metrics)
 app.UseMetrics();
+
+// ============================================================================
+// AUTHENTICATION & AUTHORIZATION MIDDLEWARE
+// ============================================================================
+// Add authentication middleware (validates JWT tokens)
+// Must be before UseAuthorization and before FastEndpoints
+app.UseAuthentication();
+
+// Add authorization middleware (enforces [Authorize] attributes)
+// OWASP A01: Broken Access Control prevention
+app.UseAuthorization();
+
+Log.Information("Authentication and authorization middleware enabled");
 
 // ============================================================================
 // LOGGING MIDDLEWARE
