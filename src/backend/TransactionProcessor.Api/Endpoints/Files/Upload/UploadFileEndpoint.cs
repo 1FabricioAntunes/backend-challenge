@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Serilog.Context;
 using TransactionProcessor.Application.Commands.Files.Upload;
 using TransactionProcessor.Application.Exceptions;
@@ -45,6 +46,7 @@ namespace TransactionProcessor.Api.Endpoints.Files.Upload;
 /// Reference: docs/backend.md § File Upload Endpoint
 /// Reference: technical-decisions.md § API Design § Error Handling
 /// </summary>
+[Authorize] // ✅ OWASP A01: Broken Access Control - Require JWT authentication
 public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse>
 {
     private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
@@ -58,7 +60,6 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
     public override void Configure()
     {
         Post("/api/files/v1");
-        AllowAnonymous();
         AllowFileUploads(); // Enable multipart/form-data
         
         Description(d => d

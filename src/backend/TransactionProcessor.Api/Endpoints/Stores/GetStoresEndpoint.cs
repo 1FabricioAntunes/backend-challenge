@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.UseCases.Stores.Queries;
 using TransactionProcessor.Infrastructure.Metrics;
@@ -11,6 +12,7 @@ namespace TransactionProcessor.Api.Endpoints.Stores;
 /// Endpoint to retrieve all stores with their current balances.
 /// GET /api/stores/v1
 /// </summary>
+[Authorize] // ✅ OWASP A01: Broken Access Control - Require JWT authentication
 public class GetStoresEndpoint : EndpointWithoutRequest<List<StoreDto>>
 {
     private readonly IMediator _mediator;
@@ -30,7 +32,6 @@ public class GetStoresEndpoint : EndpointWithoutRequest<List<StoreDto>>
     public override void Configure()
     {
         Get("/api/stores/v1");
-        AllowAnonymous();
         Description(d => d
             .Produces<List<StoreDto>>(200, "application/json")
             .WithTags("Stores")

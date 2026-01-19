@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.Queries.Files;
 using TransactionProcessor.Infrastructure.Metrics;
@@ -28,6 +29,7 @@ public class GetFilesRequest
 /// Endpoint to retrieve paginated list of files
 /// GET /api/files/v1
 /// </summary>
+[Authorize] // ✅ OWASP A01: Broken Access Control - Require JWT authentication
 public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
 {
     private readonly IMediator _mediator;
@@ -40,7 +42,6 @@ public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
     public override void Configure()
     {
         Get("/api/files/v1");
-        AllowAnonymous();
         Description(d => d
             .Produces<PagedResult<FileDto>>(200, "application/json")
             .Produces<ApiErrorResponse>(400, "application/json")
