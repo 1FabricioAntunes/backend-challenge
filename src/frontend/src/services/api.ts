@@ -1,5 +1,9 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiError } from '../types';
+
+// Local storage keys (must match AuthContext)
+const TOKEN_KEY = 'auth_token';
+const USER_KEY = 'auth_user';
 
 /**
  * Generate a unique correlation ID for request tracking
@@ -7,6 +11,35 @@ import { ApiError } from '../types';
  */
 const generateCorrelationId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+/**
+ * Placeholder for token refresh logic (future extension)
+ * 
+ * @returns Promise<string | null> - New access token or null if refresh fails
+ * 
+ * TODO: Implement refresh token logic when backend supports it
+ * - Call refresh token endpoint
+ * - Update localStorage with new token
+ * - Return new token for retry
+ */
+const refreshToken = async (): Promise<string | null> => {
+  // Stub implementation - to be implemented when backend supports refresh tokens
+  console.warn('Token refresh not yet implemented');
+  return null;
+};
+
+/**
+ * Clear authentication state and redirect to login
+ */
+const clearAuthAndRedirect = (): void => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  
+  // Redirect to login page if not already there
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
 };
 
 /**
@@ -21,11 +54,19 @@ const apiClient: AxiosInstance = axios.create({
 });
 
 /**
- * Request interceptor: Add correlation ID header to all requests
+ * Request interceptor: Add correlation ID and Authorization header to all requests
  */
 apiClient.interceptors.request.use(
-  (config) => {
+  (config: InternalAxiosRequestConfig) => {
+    // Add correlation ID for request tracking
     config.headers['X-Correlation-ID'] = generateCorrelationId();
+    
+    // Inject Authorization Bearer token from localStorage
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     return config;
   },
   (error) => {
@@ -34,11 +75,30 @@ apiClient.interceptors.request.use(
 );
 
 /**
- * Response interceptor: Handle errors and normalize error responses
+ * Response interceptor: Handle errors, 401 authentication failures, and normalize error responses
  */
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiError>) => {
+  async (error: AxiosError<ApiError>) => {
+    // Handle 401 Unauthorized - clear auth and redirect
+    if (error.response?.status === 401) {
+      console.warn('Authentication failed (401). Clearing session and redirecting to login.');
+      
+      // Optional: Attempt token refresh before redirecting (future enhancement)
+      // const newToken = await refreshToken();
+      // if (newToken && error.config) {
+      //   error.config.headers['Authorization'] = `Bearer ${newToken}`;
+      //   return apiClient.request(error.config);
+      // }
+      
+      clearAuthAndRedirect();
+      
+      return Promise.reject({
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required. Please login again.',
+      } as ApiError);
+    }
+
     // If the server returned an error response, use it
     if (error.response?.data) {
       return Promise.reject(error.response.data);
@@ -162,4 +222,25 @@ export const storeApi = {
   },
 };
 
+/**
+ * Re-export configured axios instance for direct use
+ * 
+ * Features:
+ * - Automatic Authorization header injection
+ * - Correlation ID tracking
+ * - 401 handling with redirect to login
+ * - Standardized error responses
+ * 
+ * @example
+ * ```tsx
+ * import apiClient from './services/api';
+ * 
+ * const response = await apiClient.get('/api/endpoint');
+ * ```
+ */
 export default apiClient;
+
+/**
+ * Export helper for token refresh (future extension)
+ */
+export { refreshToken };

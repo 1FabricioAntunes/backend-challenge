@@ -1,0 +1,466 @@
+/* ==============================================
+   Global Responsive Styles
+   Centralized responsive behavior and utilities
+   ============================================== */
+
+/* ==============================================
+   CSS Custom Properties (Design Tokens)
+   ============================================== */
+:root {
+  /* Breakpoints (for reference in comments) */
+  /* Mobile: < 768px */
+  /* Tablet: 768px - 1024px */
+  /* Desktop: > 1024px */
+
+  /* Spacing Scale */
+  --spacing-xs: 0.25rem;    /* 4px */
+  --spacing-sm: 0.5rem;     /* 8px */
+  --spacing-md: 1rem;       /* 16px */
+  --spacing-lg: 1.5rem;     /* 24px */
+  --spacing-xl: 2rem;       /* 32px */
+  --spacing-2xl: 3rem;      /* 48px */
+
+  /* Touch Target Sizes */
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
+
+  /* Container Max Widths */
+  --container-max-width: 1400px;
+  --container-padding: 1.5rem;
+
+  /* Z-Index Scale */
+  --z-base: 1;
+  --z-sticky: 90;
+  --z-overlay: 95;
+  --z-sidebar-mobile: 100;
+  --z-hamburger: 110;
+  --z-modal: 200;
+}
+
+/* ==============================================
+   Global Touch-Friendly Elements
+   ============================================== */
+
+/* Ensure all interactive elements are touch-friendly */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+.button,
+.btn,
+.clickable {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+}
+
+/* Form inputs should be comfortable to tap */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  min-height: var(--touch-target-min);
+  padding: 0.75rem;
+}
+
+/* Checkbox and radio buttons need larger touch targets */
+input[type="checkbox"],
+input[type="radio"] {
+  min-width: 20px;
+  min-height: 20px;
+  cursor: pointer;
+}
+
+/* ==============================================
+   Desktop (Default) - > 1024px
+   ============================================== */
+
+/* Container Constraints */
+.container {
+  max-width: var(--container-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--container-padding);
+  padding-right: var(--container-padding);
+}
+
+/* Content Spacing */
+.content-section {
+  padding: var(--spacing-xl) 0;
+}
+
+.content-gap {
+  gap: var(--spacing-lg);
+}
+
+/* ==============================================
+   Tablet - 768px to 1024px
+   ============================================== */
+@media (min-width: 768px) and (max-width: 1024px) {
+  :root {
+    --container-padding: 1.25rem;
+    --spacing-xl: 1.5rem;
+  }
+
+  /* Adjust container padding */
+  .container {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  /* Reduce content spacing */
+  .content-section {
+    padding: var(--spacing-lg) 0;
+  }
+
+  /* Adjust gap sizes */
+  .content-gap {
+    gap: var(--spacing-md);
+  }
+
+  /* Text sizes remain readable */
+  body {
+    font-size: 15px;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
+}
+
+/* ==============================================
+   Mobile - < 768px
+   ============================================== */
+@media (max-width: 768px) {
+  :root {
+    --container-padding: 1rem;
+    --spacing-xl: 1rem;
+    --spacing-lg: 0.75rem;
+  }
+
+  /* Sticky Header Adjustments */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+  }
+
+  /* Container adjustments */
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Content spacing */
+  .content-section {
+    padding: var(--spacing-md) 0;
+  }
+
+  .content-gap {
+    gap: var(--spacing-sm);
+  }
+
+  /* Touch-friendly buttons */
+  button,
+  a.button,
+  .btn {
+    min-height: var(--touch-target-comfortable);
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+  }
+
+  /* Form elements */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    min-height: var(--touch-target-comfortable);
+    padding: 0.875rem;
+    font-size: 1rem;
+  }
+
+  /* Typography adjustments for mobile */
+  body {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    line-height: 1.4;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+
+  /* Tables - horizontal scroll on mobile */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Card layouts stack vertically */
+  .card-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  /* Remove hover effects on touch devices */
+  @media (hover: none) {
+    *:hover {
+      /* Preserve only active state, not hover */
+    }
+  }
+}
+
+/* ==============================================
+   Small Mobile - < 480px
+   ============================================== */
+@media (max-width: 480px) {
+  :root {
+    --container-padding: 0.75rem;
+  }
+
+  .container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Further reduce spacing */
+  .content-section {
+    padding: 0.75rem 0;
+  }
+
+  /* Typography */
+  body {
+    font-size: 13px;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+  }
+
+  h2 {
+    font-size: 1.125rem;
+  }
+
+  h3 {
+    font-size: 1rem;
+  }
+
+  /* Buttons can be full-width on very small screens */
+  button.full-width-mobile,
+  .btn.full-width-mobile {
+    width: 100%;
+  }
+}
+
+/* ==============================================
+   Print Styles
+   ============================================== */
+@media print {
+  /* Hide non-essential elements */
+  .no-print,
+  nav,
+  .sidebar,
+  button,
+  .hamburger-button {
+    display: none !important;
+  }
+
+  /* Reset layout for print */
+  .layout-main {
+    display: block;
+  }
+
+  /* Ensure content is visible */
+  body {
+    background: white;
+    color: black;
+  }
+
+  /* Break pages appropriately */
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  table {
+    page-break-inside: avoid;
+  }
+}
+
+/* ==============================================
+   Accessibility - Reduced Motion
+   ============================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==============================================
+   Accessibility - High Contrast Mode
+   ============================================== */
+@media (prefers-contrast: high) {
+  /* Increase contrast for better visibility */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    border-width: 2px;
+  }
+
+  /* Ensure focus indicators are visible */
+  *:focus-visible {
+    outline-width: 3px;
+    outline-offset: 3px;
+  }
+}
+
+/* ==============================================
+   Dark Mode Support (Future Enhancement)
+   ============================================== */
+@media (prefers-color-scheme: dark) {
+  /* Placeholder for dark mode styles */
+  /* Uncomment and customize when implementing dark mode */
+  /*
+  :root {
+    --color-background: #1a202c;
+    --color-text: #f7fafc;
+    --color-border: #4a5568;
+  }
+  */
+}
+
+/* ==============================================
+   Landscape Orientation Adjustments
+   ============================================== */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Reduce vertical spacing in landscape */
+  .content-section {
+    padding: 0.5rem 0;
+  }
+
+  /* Header can be more compact */
+  header {
+    padding: 0.5rem 1rem;
+  }
+
+  /* Sidebar should not take too much space */
+  .sidebar {
+    max-width: 200px;
+  }
+}
+
+/* ==============================================
+   Utility Classes
+   ============================================== */
+
+/* Responsive visibility helpers */
+.hide-mobile {
+  display: initial;
+}
+
+.show-mobile {
+  display: none;
+}
+
+.hide-tablet {
+  display: initial;
+}
+
+.show-tablet {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .show-mobile {
+    display: initial !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .hide-tablet {
+    display: none !important;
+  }
+
+  .show-tablet {
+    display: initial !important;
+  }
+}
+
+/* Spacing utilities */
+.mt-mobile {
+  margin-top: 0;
+}
+
+.mb-mobile {
+  margin-bottom: 0;
+}
+
+.p-mobile {
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  .mt-mobile {
+    margin-top: var(--spacing-md);
+  }
+
+  .mb-mobile {
+    margin-bottom: var(--spacing-md);
+  }
+
+  .p-mobile {
+    padding: var(--spacing-md);
+  }
+}
+
+/* Text alignment utilities */
+.text-center-mobile {
+  text-align: inherit;
+}
+
+@media (max-width: 768px) {
+  .text-center-mobile {
+    text-align: center;
+  }
+}
+
+/* Flexbox utilities */
+.stack-mobile {
+  display: flex;
+  flex-direction: row;
+}
+
+@media (max-width: 768px) {
+  .stack-mobile {
+    flex-direction: column;
+  }
+}
