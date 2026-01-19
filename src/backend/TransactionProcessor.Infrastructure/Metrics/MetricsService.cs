@@ -144,6 +144,18 @@ public class MetricsService
                 Buckets = new double[] { 0.001, 0.005, 0.01, 0.05, 0.1 }
             });
 
+    /// <summary>
+    /// SQS operation duration in seconds (publish, receive, delete, dlq_receive)
+    /// </summary>
+    public static readonly Histogram SQSOperationDurationSeconds = Prometheus.Metrics.CreateHistogram(
+            name: "sqs_operation_duration_seconds",
+            help: "Duration of SQS operations in seconds",
+            new HistogramConfiguration
+            {
+                LabelNames = new[] { "operation" },  // Values: publish, receive, delete, dlq_receive
+                Buckets = new double[] { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0 }
+            });
+
     // ========================================================================
     // GAUGES - Measure instantaneous values (depth, size, count)
     // ========================================================================

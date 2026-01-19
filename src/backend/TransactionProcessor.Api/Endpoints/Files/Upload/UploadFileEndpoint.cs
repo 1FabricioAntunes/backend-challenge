@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Serilog.Context;
 using TransactionProcessor.Application.Commands.Files.Upload;
 using TransactionProcessor.Application.Exceptions;
+using TransactionProcessor.Infrastructure.Metrics;
 
 namespace TransactionProcessor.Api.Endpoints.Files.Upload;
 
@@ -78,11 +80,24 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
             correlationId = Guid.NewGuid().ToString();
         }
 
+        // Push correlation ID to log context for structured logging
+        using (LogContext.PushProperty("CorrelationId", correlationId))
+
         try
         {
             // Validate file is present
             if (req.File == null || req.File.Length == 0)
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record missing file error
+                // ========================================================================
+                MetricsService.RecordError("missing_file");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("POST", "/api/files/v1", "400")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 400;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ErrorResponse(
@@ -96,6 +111,16 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
             // Validate file size (10MB limit)
             if (req.File.Length > MaxFileSize)
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record file size error
+                // ========================================================================
+                MetricsService.RecordError("file_too_large");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("POST", "/api/files/v1", "413")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 413;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ErrorResponse(
@@ -125,6 +150,16 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
             // Check if handler encountered validation error
             if (!result.Success && result.ErrorDetails.Any())
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record validation error from handler
+                // ========================================================================
+                MetricsService.RecordError("validation_error");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("POST", "/api/files/v1", "400")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 400;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ErrorResponse(
@@ -139,6 +174,16 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
             // Check if handler encountered storage error
             if (!result.Success && result.Status == "Rejected")
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record processing error
+                // ========================================================================
+                MetricsService.RecordError("processing_error");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("POST", "/api/files/v1", "500")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 500;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ErrorResponse(
@@ -151,6 +196,15 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
 
             // Success - return 202 Accepted
             stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record successful file upload
+            // ========================================================================
+            MetricsService.RecordFileUploaded(req.File.FileName, req.File.Length, "success");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("POST", "/api/files/v1", "202")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 202;
             HttpContext.Response.Headers["X-Correlation-ID"] = correlationId;
             HttpContext.Response.Headers["X-Processing-Time-Ms"] = stopwatch.ElapsedMilliseconds.ToString();
@@ -160,8 +214,17 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
         catch (Exception ex)
         {
             stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record unhandled exception
+            // ========================================================================
+            MetricsService.RecordError("unhandled_exception");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("POST", "/api/files/v1", "500")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             // Log exception (structured logging should be configured)
-            Console.Error.WriteLine($"[{correlationId}] Error in UploadFileEndpoint: {ex}");
+            Logger.LogError(ex, "[{CorrelationId}] Error in UploadFileEndpoint: {Error}", correlationId, ex.Message);
 
             HttpContext.Response.StatusCode = 500;
             await HttpContext.Response.WriteAsJsonAsync(
@@ -171,7 +234,7 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
                     500),
                 cancellationToken: ct);
         }
-    }
+        }
 }
 
 /// <summary>

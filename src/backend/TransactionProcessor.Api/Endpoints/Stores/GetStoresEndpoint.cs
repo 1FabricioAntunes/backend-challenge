@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.UseCases.Stores.Queries;
+using TransactionProcessor.Infrastructure.Metrics;
 
 namespace TransactionProcessor.Api.Endpoints.Stores;
 
@@ -43,10 +45,41 @@ public class GetStoresEndpoint : EndpointWithoutRequest<List<StoreDto>>
     /// <returns>A list of all stores with their current balances.</returns>
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var query = new GetStoresQuery();
-        var result = await _mediator.Send(query, ct);
+        var stopwatch = Stopwatch.StartNew();
 
-        HttpContext.Response.StatusCode = 200;
-        await HttpContext.Response.WriteAsJsonAsync(result, cancellationToken: ct);
+        try
+        {
+            var query = new GetStoresQuery();
+            var result = await _mediator.Send(query, ct);
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record successful query
+            // ========================================================================
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/stores/v1", "200")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            HttpContext.Response.StatusCode = 200;
+            await HttpContext.Response.WriteAsJsonAsync(result, cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record error
+            // ========================================================================
+            MetricsService.RecordError("unhandled_exception");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/stores/v1", "500")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            Logger.LogError(ex, "Error retrieving stores");
+
+            HttpContext.Response.StatusCode = 500;
+            throw;
+        }
     }
 }

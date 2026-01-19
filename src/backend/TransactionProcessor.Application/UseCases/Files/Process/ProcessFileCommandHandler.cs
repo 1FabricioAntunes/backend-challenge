@@ -1,12 +1,15 @@
+using System.Diagnostics;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Serilog.Context;
 using TransactionProcessor.Application.Models;
 using TransactionProcessor.Application.Services;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Domain.ValueObjects;
+using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using FileEntity = TransactionProcessor.Domain.Entities.File;
 
@@ -74,17 +77,22 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
     public async Task<ProcessingResult> Handle(ProcessFileCommand request, CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
+        var overallStopwatch = Stopwatch.StartNew();
+        
         var result = new ProcessingResult
         {
             FileId = request.FileId,
             StartedAt = startTime
         };
 
-        try
+        // Push correlation ID to log context for structured logging
+        using (LogContext.PushProperty("CorrelationId", request.CorrelationId))
         {
-            _logger.LogInformation(
-                "[{CorrelationId}] Starting file processing for FileId={FileId}, S3Key={S3Key}",
-                request.CorrelationId, request.FileId, request.S3Key);
+            try
+            {
+                _logger.LogInformation(
+                    "[{CorrelationId}] Starting file processing for FileId={FileId}, S3Key={S3Key}",
+                    request.CorrelationId, request.FileId, request.S3Key);
 
             // Step 1: Get File entity from database
             var file = await _fileRepository.GetByIdAsync(request.FileId);
@@ -128,10 +136,24 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                 "[{CorrelationId}] Parsing CNAB file",
                 request.CorrelationId);
 
+            var parseStopwatch = Stopwatch.StartNew();
             var parseResult = await _parser.ParseAsync(fileStream, cancellationToken);
+            parseStopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record file parsing duration
+            // ========================================================================
+            MetricsService.FileParsingDurationSeconds
+                .WithLabels("cnab")
+                .Observe(parseStopwatch.Elapsed.TotalSeconds);
 
             if (!parseResult.IsValid)
             {
+                // ========================================================================
+                // METRICS: Record parsing error
+                // ========================================================================
+                MetricsService.RecordError("parsing_error");
+
                 _logger.LogWarning(
                     "[{CorrelationId}] File parsing failed with {ErrorCount} errors",
                     request.CorrelationId, parseResult.Errors.Count);
@@ -149,6 +171,7 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                 "[{CorrelationId}] Validating {LineCount} parsed records",
                 request.CorrelationId, parseResult.ValidLines.Count);
 
+            var validationStopwatch = Stopwatch.StartNew();
             var recordValidationErrors = new List<string>();
             var validatedRecords = new List<CNABLineData>();
 
@@ -168,9 +191,23 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                 }
             }
 
+            validationStopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record validation duration
+            // ========================================================================
+            MetricsService.FileValidationDurationSeconds
+                .WithLabels("cnab")
+                .Observe(validationStopwatch.Elapsed.TotalSeconds);
+
             // Step 6: If any validation fails, mark file as Rejected and return
             if (recordValidationErrors.Count > 0)
             {
+                // ========================================================================
+                // METRICS: Record validation error
+                // ========================================================================
+                MetricsService.RecordError("validation_error");
+
                 _logger.LogWarning(
                     "[{CorrelationId}] Record validation failed with {ErrorCount} errors",
                     request.CorrelationId, recordValidationErrors.Count);
@@ -259,8 +296,26 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                     await _storeRepository.AddAsync(store);
                 }
 
+                // ========================================================================
+                // METRICS: Record store insert operations
+                // ========================================================================
+                if (storesToUpsert.Count > 0)
+                {
+                    MetricsService.RecordDatabaseOperation("insert");
+                }
+
                 // Add all transactions
+                var txnStopwatch = Stopwatch.StartNew();
                 await _transactionRepository.AddRangeAsync(transactionsToAdd);
+                txnStopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record bulk transaction insert
+                // ========================================================================
+                MetricsService.DatabaseQueryDurationSeconds
+                    .WithLabels("insert", "transaction")
+                    .Observe(txnStopwatch.Elapsed.TotalSeconds);
+                MetricsService.RecordDatabaseOperation("insert");
 
                 // Step 11: Update store balances
                 foreach (var (storeKey, store) in storeMap)
@@ -291,7 +346,18 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                     }
 
                     store.UpdateBalance(balance);
+
+                    var storeUpdateStopwatch = Stopwatch.StartNew();
                     await _storeRepository.UpdateAsync(store);
+                    storeUpdateStopwatch.Stop();
+
+                    // ========================================================================
+                    // METRICS: Record store balance update duration
+                    // ========================================================================
+                    MetricsService.DatabaseQueryDurationSeconds
+                        .WithLabels("update", "store")
+                        .Observe(storeUpdateStopwatch.Elapsed.TotalSeconds);
+                    MetricsService.RecordDatabaseOperation("update");
                 }
 
                 // Step 12: Mark file as Processed
@@ -303,6 +369,16 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
 
                 // Step 13: Commit transaction
                 await dbTransaction.CommitAsync(cancellationToken);
+
+                overallStopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record successful file processing
+                // ========================================================================
+                MetricsService.RecordFileProcessed("success");
+                MetricsService.FileProcessingDurationSeconds
+                    .WithLabels("cnab")
+                    .Observe(overallStopwatch.Elapsed.TotalSeconds);
 
                 _logger.LogInformation(
                     "[{CorrelationId}] File processing completed successfully. " +
@@ -317,6 +393,16 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
             catch (Exception ex)
             {
                 await dbTransaction.RollbackAsync(cancellationToken);
+                
+                // ========================================================================
+                // METRICS: Record database error and rollback
+                // ========================================================================
+                MetricsService.RecordError("database_error");
+                overallStopwatch.Stop();
+                MetricsService.FileProcessingDurationSeconds
+                    .WithLabels("cnab")
+                    .Observe(overallStopwatch.Elapsed.TotalSeconds);
+
                 _logger.LogError(
                     ex,
                     "[{CorrelationId}] Database transaction failed, rolled back. Error={Error}",
@@ -335,6 +421,16 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
         }
         catch (Exception ex)
         {
+            overallStopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record unhandled exception
+            // ========================================================================
+            MetricsService.RecordError("unhandled_exception");
+            MetricsService.FileProcessingDurationSeconds
+                .WithLabels("cnab")
+                .Observe(overallStopwatch.Elapsed.TotalSeconds);
+
             _logger.LogError(
                 ex,
                 "[{CorrelationId}] File processing failed with exception. FileId={FileId}",
@@ -354,6 +450,7 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
                 "Status={Status}, Transactions={TransactionCount}, Stores={StoreCount}",
                 request.CorrelationId, result.Success, result.ProcessingDuration.TotalMilliseconds,
                 result.Status, result.TransactionsInserted, result.StoresUpserted);
+        }
         }
 
         return result;

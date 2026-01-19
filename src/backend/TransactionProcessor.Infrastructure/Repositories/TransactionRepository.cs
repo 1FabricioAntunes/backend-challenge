@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Repositories;
+using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 
 namespace TransactionProcessor.Infrastructure.Repositories;
@@ -40,12 +42,35 @@ public class TransactionRepository : ITransactionRepository
     /// <returns>Transaction entity with File and Store loaded, or null if not found</returns>
     public async Task<Transaction?> GetByIdAsync(long id)
     {
-        return await _context.Transactions
-            .Include(t => t.File)
-            .Include(t => t.Store)
-            .Include(t => t.TransactionType)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == id);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _context.Transactions
+                .Include(t => t.File)
+                .Include(t => t.Store)
+                .Include(t => t.TransactionType)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -63,14 +88,37 @@ public class TransactionRepository : ITransactionRepository
     /// <returns>Collection of transactions for the file, ordered by date</returns>
     public async Task<IEnumerable<Transaction>> GetByFileIdAsync(Guid fileId)
     {
-        return await _context.Transactions
-            .AsNoTracking()
-            .Include(t => t.Store)
-            .Include(t => t.TransactionType)
-            .Where(t => t.FileId == fileId)
-            .OrderBy(t => t.TransactionDate)
-                .ThenBy(t => t.TransactionTime)
-            .ToListAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _context.Transactions
+                .AsNoTracking()
+                .Include(t => t.Store)
+                .Include(t => t.TransactionType)
+                .Where(t => t.FileId == fileId)
+                .OrderBy(t => t.TransactionDate)
+                    .ThenBy(t => t.TransactionTime)
+                .ToListAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -90,27 +138,50 @@ public class TransactionRepository : ITransactionRepository
     /// <returns>Collection of transactions within date range, ordered by date</returns>
     public async Task<IEnumerable<Transaction>> GetByStoreIdAsync(Guid storeId, DateTime? startDate = null, DateTime? endDate = null)
     {
-        var query = _context.Transactions
-            .AsNoTracking()
-            .Include(t => t.TransactionType)
-            .Where(t => t.StoreId == storeId);
-
-        if (startDate.HasValue)
+        var stopwatch = Stopwatch.StartNew();
+        try
         {
-            var startDateOnly = DateOnly.FromDateTime(startDate.Value);
-            query = query.Where(t => t.TransactionDate >= startDateOnly);
-        }
+            var query = _context.Transactions
+                .AsNoTracking()
+                .Include(t => t.TransactionType)
+                .Where(t => t.StoreId == storeId);
 
-        if (endDate.HasValue)
+            if (startDate.HasValue)
+            {
+                var startDateOnly = DateOnly.FromDateTime(startDate.Value);
+                query = query.Where(t => t.TransactionDate >= startDateOnly);
+            }
+
+            if (endDate.HasValue)
+            {
+                var endDateOnly = DateOnly.FromDateTime(endDate.Value);
+                query = query.Where(t => t.TransactionDate <= endDateOnly);
+            }
+
+            var result = await query
+                .OrderBy(t => t.TransactionDate)
+                    .ThenBy(t => t.TransactionTime)
+                .ToListAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
         {
-            var endDateOnly = DateOnly.FromDateTime(endDate.Value);
-            query = query.Where(t => t.TransactionDate <= endDateOnly);
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
         }
-
-        return await query
-            .OrderBy(t => t.TransactionDate)
-                .ThenBy(t => t.TransactionTime)
-            .ToListAsync();
     }
 
     /// <summary>
@@ -131,8 +202,30 @@ public class TransactionRepository : ITransactionRepository
         if (transaction == null)
             throw new ArgumentNullException(nameof(transaction));
 
-        await _context.Transactions.AddAsync(transaction);
-        await _context.SaveChangesAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            await _context.Transactions.AddAsync(transaction);
+            await _context.SaveChangesAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record insert operation duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordDatabaseOperation("insert");
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -154,8 +247,30 @@ public class TransactionRepository : ITransactionRepository
         if (transactions == null)
             throw new ArgumentNullException(nameof(transactions));
 
-        await _context.Transactions.AddRangeAsync(transactions);
-        await _context.SaveChangesAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            await _context.Transactions.AddRangeAsync(transactions);
+            await _context.SaveChangesAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record bulk insert operation duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordDatabaseOperation("insert");
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -174,8 +289,31 @@ public class TransactionRepository : ITransactionRepository
     /// <returns>First transaction for file+store combination, or null if none exist</returns>
     public async Task<Transaction?> GetFirstByFileAndStoreAsync(Guid fileId, Guid storeId)
     {
-        return await _context.Transactions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.FileId == fileId && t.StoreId == storeId);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _context.Transactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.FileId == fileId && t.StoreId == storeId);
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "transaction")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 }

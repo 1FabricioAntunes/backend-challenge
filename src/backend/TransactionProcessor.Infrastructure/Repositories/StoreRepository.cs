@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Repositories;
+using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 
 namespace TransactionProcessor.Infrastructure.Repositories;
@@ -20,10 +22,33 @@ public class StoreRepository : IStoreRepository
 
     public async Task<Store?> GetByIdAsync(Guid id)
     {
-        return await _context.Stores
-            .Include(s => s.Transactions)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == id);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _context.Stores
+                .Include(s => s.Transactions)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == id);
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -34,20 +59,66 @@ public class StoreRepository : IStoreRepository
     /// <returns>Store entity or null if not found</returns>
     public async Task<Store?> GetByNameAndOwnerAsync(string name, string ownerName)
     {
-        return await _context.Stores
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Name == name && s.OwnerName == ownerName);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _context.Stores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Name == name && s.OwnerName == ownerName);
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<Store>> GetAllAsync()
     {
-        // Read-only optimization: AsNoTracking()
-        // Do not eager-load Transactions to reduce data transfer
-        // Returns Store entities without Transactions collection populated
-        return await _context.Stores
-            .AsNoTracking()
-            .OrderBy(s => s.Name)
-            .ToListAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            // Read-only optimization: AsNoTracking()
+            // Do not eager-load Transactions to reduce data transfer
+            // Returns Store entities without Transactions collection populated
+            var result = await _context.Stores
+                .AsNoTracking()
+                .OrderBy(s => s.Name)
+                .ToListAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record query duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>
@@ -60,8 +131,30 @@ public class StoreRepository : IStoreRepository
         if (store == null)
             throw new ArgumentNullException(nameof(store));
 
-        await _context.Stores.AddAsync(store);
-        await _context.SaveChangesAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            await _context.Stores.AddAsync(store);
+            await _context.SaveChangesAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record insert operation duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordDatabaseOperation("insert");
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("insert", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     public async Task UpdateAsync(Store store)
@@ -69,8 +162,30 @@ public class StoreRepository : IStoreRepository
         if (store == null)
             throw new ArgumentNullException(nameof(store));
 
-        _context.Stores.Update(store);
-        await _context.SaveChangesAsync();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            _context.Stores.Update(store);
+            await _context.SaveChangesAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record update operation duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("update", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordDatabaseOperation("update");
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("update", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     public async Task UpdateBalanceAsync(Guid storeId, decimal newBalance)
@@ -78,13 +193,35 @@ public class StoreRepository : IStoreRepository
         if (newBalance < 0)
             throw new ArgumentException("Balance cannot be negative.", nameof(newBalance));
 
-        var store = await _context.Stores.FirstOrDefaultAsync(s => s.Id == storeId);
-        if (store == null)
-            throw new InvalidOperationException("Store not found.");
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var store = await _context.Stores.FirstOrDefaultAsync(s => s.Id == storeId);
+            if (store == null)
+                throw new InvalidOperationException("Store not found.");
 
-        store.UpdateBalance(newBalance);
-        _context.Stores.Update(store);
-        await _context.SaveChangesAsync();
+            store.UpdateBalance(newBalance);
+            _context.Stores.Update(store);
+            await _context.SaveChangesAsync();
+
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record update operation duration
+            // ========================================================================
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("update", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordDatabaseOperation("update");
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("update", "store")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+            throw;
+        }
     }
 
     /// <summary>

@@ -4,8 +4,10 @@ using Amazon.SQS.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Polly;
+using System.Diagnostics;
 using System.Text.Json;
 using TransactionProcessor.Domain.Interfaces;
+using TransactionProcessor.Infrastructure.Metrics;
 
 namespace TransactionProcessor.Infrastructure.Messaging;
 
@@ -118,6 +120,7 @@ public class SQSMessageQueueService : IMessageQueueService
         if (string.IsNullOrWhiteSpace(correlationId))
             throw new ArgumentException("Correlation ID cannot be empty", nameof(correlationId));
 
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             var messageBody = JsonSerializer.Serialize(message);
@@ -169,15 +172,24 @@ public class SQSMessageQueueService : IMessageQueueService
                     messageId, correlationId);
             });
 
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("publish").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordSqsMessageProcessed("main_queue", "success");
             return messageId;
         }
         catch (AmazonSQSException ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("publish").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_publish_error");
             _logger.LogError(ex, "AWS SQS error during message publish: ErrorCode={ErrorCode}, Message={Message}", ex.ErrorCode, ex.Message);
             throw new MessageQueueException($"Failed to publish message to SQS: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("publish").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_publish_unhandled");
             _logger.LogError(ex, "Unexpected error during message publish: CorrelationId={CorrelationId}", correlationId);
             throw new MessageQueueException($"Unexpected error during message publish: {ex.Message}", ex);
         }
@@ -207,6 +219,7 @@ public class SQSMessageQueueService : IMessageQueueService
         if (visibilityTimeoutSeconds < 0 || visibilityTimeoutSeconds > 43200)
             throw new ArgumentException("Visibility timeout must be between 0 and 43200 seconds", nameof(visibilityTimeoutSeconds));
 
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             _logger.LogDebug("Receiving messages from SQS: MaxMessages={MaxMessages}, VisibilityTimeout={VisibilityTimeout}s",
@@ -263,15 +276,24 @@ public class SQSMessageQueueService : IMessageQueueService
                 _logger.LogDebug("No messages received from SQS queue");
             }
 
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.UpdateQueueDepth("main_queue", messages.Count);
             return messages;
         }
         catch (AmazonSQSException ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_receive_error");
             _logger.LogError(ex, "AWS SQS error during message receive: ErrorCode={ErrorCode}, Message={Message}", ex.ErrorCode, ex.Message);
             throw new MessageQueueException($"Failed to receive messages from SQS: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_receive_unhandled");
             _logger.LogError(ex, "Unexpected error during message receive");
             throw new MessageQueueException($"Unexpected error during message receive: {ex.Message}", ex);
         }
@@ -292,6 +314,7 @@ public class SQSMessageQueueService : IMessageQueueService
         if (string.IsNullOrWhiteSpace(receiptHandle))
             throw new ArgumentException("Receipt handle cannot be empty", nameof(receiptHandle));
 
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             _logger.LogInformation("Deleting message from SQS: ReceiptHandle={ReceiptHandle}", receiptHandle);
@@ -308,15 +331,23 @@ public class SQSMessageQueueService : IMessageQueueService
                 await _sqsClient.DeleteMessageAsync(deleteMessageRequest, cancellationToken);
             });
 
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("delete").Observe(stopwatch.Elapsed.TotalSeconds);
             _logger.LogInformation("Message deleted successfully from SQS");
         }
         catch (AmazonSQSException ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("delete").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_delete_error");
             _logger.LogError(ex, "AWS SQS error during message deletion: ErrorCode={ErrorCode}, Message={Message}", ex.ErrorCode, ex.Message);
             throw new MessageQueueException($"Failed to delete message from SQS: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("delete").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_delete_unhandled");
             _logger.LogError(ex, "Unexpected error during message deletion");
             throw new MessageQueueException($"Unexpected error during message deletion: {ex.Message}", ex);
         }
@@ -342,6 +373,7 @@ public class SQSMessageQueueService : IMessageQueueService
         if (maxNumberOfMessages < 1 || maxNumberOfMessages > 10)
             throw new ArgumentException("Max messages must be between 1 and 10", nameof(maxNumberOfMessages));
 
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             _logger.LogInformation("Retrieving messages from DLQ: MaxMessages={MaxMessages}", maxNumberOfMessages);
@@ -393,15 +425,24 @@ public class SQSMessageQueueService : IMessageQueueService
                 _logger.LogInformation("No messages found in DLQ");
             }
 
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("dlq_receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.UpdateDlqDepth("main_queue", dlqMessages.Count);
             return dlqMessages;
         }
         catch (AmazonSQSException ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("dlq_receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_dlq_receive_error");
             _logger.LogError(ex, "AWS SQS error retrieving DLQ messages: ErrorCode={ErrorCode}, Message={Message}", ex.ErrorCode, ex.Message);
             throw new MessageQueueException($"Failed to retrieve DLQ messages from SQS: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            MetricsService.SQSOperationDurationSeconds.WithLabels("dlq_receive").Observe(stopwatch.Elapsed.TotalSeconds);
+            MetricsService.RecordError("sqs_dlq_receive_unhandled");
             _logger.LogError(ex, "Unexpected error retrieving DLQ messages");
             throw new MessageQueueException($"Unexpected error retrieving DLQ messages: {ex.Message}", ex);
         }

@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.Queries.Files;
+using TransactionProcessor.Infrastructure.Metrics;
 using ApiErrorResponse = TransactionProcessor.Api.Models.ErrorResponse;
 
 namespace TransactionProcessor.Api.Endpoints.Files;
@@ -45,9 +47,21 @@ public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
 
     public override async Task HandleAsync(GetFileByIdRequest req, CancellationToken ct)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         // Validate file ID
         if (req.Id == Guid.Empty)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record validation error
+            // ========================================================================
+            MetricsService.RecordError("invalid_file_id");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1/{id}", "400")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 400;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(
@@ -67,6 +81,16 @@ public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
             // Return 404 if file not found
             if (result == null)
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record not found error
+                // ========================================================================
+                MetricsService.RecordError("file_not_found");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("GET", "/api/files/v1/{id}", "404")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 404;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ApiErrorResponse(
@@ -77,11 +101,30 @@ public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
                 return;
             }
 
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record successful query
+            // ========================================================================
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1/{id}", "200")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 200;
             await HttpContext.Response.WriteAsJsonAsync(result, cancellationToken: ct);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record error
+            // ========================================================================
+            MetricsService.RecordError("unhandled_exception");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1/{id}", "500")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 500;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(
