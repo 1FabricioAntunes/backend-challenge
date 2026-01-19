@@ -1,0 +1,615 @@
+/* StoreBalanceComponent Styles */
+
+.store-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: #fff;
+}
+
+/* Header Section */
+.store-balance__header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.store-balance__title-group {
+  flex: 1;
+  text-align: left;
+}
+
+.store-balance__title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #222;
+  margin: 0 0 0.5rem 0;
+  letter-spacing: -0.5px;
+}
+
+.store-balance__subtitle {
+  font-size: 1rem;
+  color: #666;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Refresh Button */
+.store-balance__refresh-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #007bff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.store-balance__refresh-button:hover:not(:disabled) {
+  background: #0056b3;
+  box-shadow: 0 2px 8px rgba(0, 86, 179, 0.3);
+  transform: translateY(-1px);
+}
+
+.store-balance__refresh-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 86, 179, 0.2);
+}
+
+.store-balance__refresh-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Controls Section */
+.store-balance__controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1.5rem;
+  align-items: end;
+}
+
+/* Search Input */
+.store-balance__search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.store-balance__search-input {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #f8f9fa;
+  transition: all 0.2s ease-in-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.store-balance__search-input:focus {
+  outline: none;
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.store-balance__search-input::placeholder {
+  color: #999;
+}
+
+/* Sort Controls */
+.store-balance__sort-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.store-balance__sort-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #666;
+}
+
+.store-balance__sort-select {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23333' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.store-balance__sort-select:focus {
+  outline: none;
+  border-color: #007bff;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23007bff' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Error Message */
+.store-balance__error {
+  padding: 1rem 1.25rem;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  color: #721c24;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.store-balance__error-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.store-balance__error-text {
+  flex: 1;
+}
+
+/* Loading State */
+.store-balance__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem 2rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  min-height: 300px;
+}
+
+.store-balance__spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e0e0e0;
+  border-top-color: #007bff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.store-balance__loading p {
+  font-size: 1rem;
+  color: #666;
+  margin: 0;
+}
+
+/* Empty State */
+.store-balance__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  min-height: 300px;
+}
+
+.store-balance__empty-text {
+  font-size: 1.1rem;
+  color: #666;
+  margin: 0;
+  text-align: center;
+}
+
+/* Table Wrapper */
+.store-balance__table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* Table */
+.store-balance__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+/* Table Header */
+.store-balance__table-head {
+  background: linear-gradient(to bottom, #f8f9fa, #f0f1f3);
+  border-bottom: 2px solid #dee2e6;
+}
+
+.store-balance__table-header {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.store-balance__table-header--code {
+  width: 10%;
+  min-width: 100px;
+}
+
+.store-balance__table-header--name {
+  width: 50%;
+  min-width: 200px;
+}
+
+.store-balance__table-header--balance {
+  width: 40%;
+  min-width: 180px;
+  text-align: right;
+}
+
+/* Table Body */
+.store-balance__table-body {
+  background: #fff;
+}
+
+.store-balance__table-row {
+  border-bottom: 1px solid #e9ecef;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.store-balance__table-row--data:hover {
+  background: #f8f9fa;
+}
+
+.store-balance__table-row--data:last-child {
+  border-bottom: none;
+}
+
+/* Table Cells */
+.store-balance__table-cell {
+  padding: 1rem;
+  font-size: 0.95rem;
+  color: #333;
+  vertical-align: middle;
+}
+
+.store-balance__table-cell--code {
+  font-weight: 600;
+  color: #007bff;
+  width: 10%;
+  min-width: 100px;
+}
+
+.store-balance__table-cell--name {
+  width: 50%;
+  min-width: 200px;
+}
+
+.store-balance__table-cell--balance {
+  width: 40%;
+  min-width: 180px;
+  text-align: right;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+/* Balance Status Colors */
+.store-balance__table-cell--positive {
+  color: #28a745;
+}
+
+.store-balance__table-cell--negative {
+  color: #dc3545;
+}
+
+.store-balance__table-cell--zero {
+  color: #333;
+}
+
+/* Balance Indicator Icon */
+.store-balance__balance-indicator {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-weight: bold;
+  font-size: 1.1em;
+}
+
+/* Total Balance Section */
+.store-balance__total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.store-balance__total-box {
+  padding: 1.5rem 2rem;
+  border-radius: 8px;
+  border: 2px solid;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.store-balance__total-box--positive {
+  background: #d4edda;
+  border-color: #28a745;
+  color: #155724;
+}
+
+.store-balance__total-box--negative {
+  background: #f8d7da;
+  border-color: #dc3545;
+  color: #721c24;
+}
+
+.store-balance__total-box--zero {
+  background: #e2e3e5;
+  border-color: #6c757d;
+  color: #383d41;
+}
+
+.store-balance__total-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.store-balance__total-amount {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.store-balance__total-count {
+  font-size: 0.875rem;
+  opacity: 0.75;
+  margin-top: 0.25rem;
+}
+
+/* Responsive Design */
+
+/* Tablet (768px) */
+@media (max-width: 768px) {
+  .store-balance {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+
+  .store-balance__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .store-balance__title {
+    font-size: 1.5rem;
+  }
+
+  .store-balance__refresh-button {
+    width: 100%;
+  }
+
+  .store-balance__controls {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .store-balance__sort-group {
+    width: 100%;
+  }
+
+  .store-balance__table-header--code {
+    width: 15%;
+    min-width: 60px;
+    font-size: 0.85rem;
+  }
+
+  .store-balance__table-header--name {
+    width: 45%;
+    min-width: 120px;
+    font-size: 0.85rem;
+  }
+
+  .store-balance__table-header--balance {
+    width: 40%;
+    min-width: 100px;
+    font-size: 0.85rem;
+  }
+
+  .store-balance__table-cell--code {
+    width: 15%;
+    min-width: 60px;
+    font-size: 0.85rem;
+    padding: 0.75rem;
+  }
+
+  .store-balance__table-cell--name {
+    width: 45%;
+    min-width: 120px;
+    padding: 0.75rem;
+  }
+
+  .store-balance__table-cell--balance {
+    width: 40%;
+    min-width: 100px;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .store-balance__balance-indicator {
+    margin-right: 0.25rem;
+    font-size: 1em;
+  }
+
+  .store-balance__total-box {
+    min-width: 250px;
+    padding: 1rem 1.5rem;
+  }
+
+  .store-balance__total-amount {
+    font-size: 1.5rem;
+  }
+}
+
+/* Mobile (480px) */
+@media (max-width: 480px) {
+  .store-balance {
+    padding: 0.75rem;
+    gap: 1rem;
+  }
+
+  .store-balance__header {
+    gap: 0.75rem;
+  }
+
+  .store-balance__title {
+    font-size: 1.25rem;
+  }
+
+  .store-balance__subtitle {
+    font-size: 0.875rem;
+  }
+
+  .store-balance__controls {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .store-balance__search-input,
+  .store-balance__sort-select {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.6rem 0.75rem;
+  }
+
+  .store-balance__sort-label {
+    font-size: 0.75rem;
+  }
+
+  .store-balance__table-header {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .store-balance__table-cell {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .store-balance__balance-indicator {
+    display: none;
+  }
+
+  .store-balance__table-header--code {
+    width: 20%;
+    min-width: 45px;
+  }
+
+  .store-balance__table-header--name {
+    width: 40%;
+    min-width: 80px;
+  }
+
+  .store-balance__table-header--balance {
+    width: 40%;
+    min-width: 70px;
+  }
+
+  .store-balance__table-cell--code {
+    width: 20%;
+    min-width: 45px;
+  }
+
+  .store-balance__table-cell--name {
+    width: 40%;
+    min-width: 80px;
+  }
+
+  .store-balance__table-cell--balance {
+    width: 40%;
+    min-width: 70px;
+    font-size: 0.8rem;
+  }
+
+  .store-balance__error {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    gap: 0.5rem;
+  }
+
+  .store-balance__error-icon {
+    font-size: 1rem;
+  }
+
+  .store-balance__loading {
+    min-height: 200px;
+    padding: 2rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .store-balance__spinner {
+    width: 32px;
+    height: 32px;
+    border-width: 3px;
+  }
+
+  .store-balance__loading p {
+    font-size: 0.9rem;
+  }
+
+  .store-balance__empty {
+    min-height: 200px;
+    padding: 2rem 1rem;
+  }
+
+  .store-balance__empty-text {
+    font-size: 0.95rem;
+  }
+
+  .store-balance__total {
+    justify-content: center;
+  }
+
+  .store-balance__total-box {
+    min-width: 100%;
+    align-items: center;
+    text-align: center;
+  }
+
+  .store-balance__total-amount {
+    font-size: 1.25rem;
+  }
+
+  .store-balance__total-label {
+    font-size: 0.75rem;
+  }
+
+  .store-balance__total-count {
+    font-size: 0.75rem;
+  }
+}
