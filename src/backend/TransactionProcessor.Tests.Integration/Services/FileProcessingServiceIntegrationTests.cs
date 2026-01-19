@@ -26,6 +26,7 @@ public class FileProcessingServiceIntegrationTests
     private readonly Mock<ITransactionRepository> _transactionRepositoryMock = new();
     private readonly Mock<IFileStorageService> _storageServiceMock = new();
     private readonly Mock<ICNABParser> _parserMock = new();
+    private readonly Mock<ICNABValidator> _validatorMock = new();
     private readonly Mock<ILogger<FileProcessingService>> _loggerMock = new();
 
     private readonly FileProcessingService _service;
@@ -45,6 +46,7 @@ public class FileProcessingServiceIntegrationTests
             _transactionRepositoryMock.Object,
             _storageServiceMock.Object,
             _parserMock.Object,
+            _validatorMock.Object,
             dbContext,
             _loggerMock.Object);
     }
@@ -185,13 +187,18 @@ public class FileProcessingServiceIntegrationTests
             .Setup(x => x.ParseAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(validationResult);
 
+        // Setup validator to accept all records as valid
+        _validatorMock
+            .Setup(x => x.ValidateRecord(It.IsAny<CNABLineData>(), It.IsAny<int>()))
+            .Returns(new CNABValidationResult { IsValid = true });
+
         _storeRepositoryMock
             .Setup(x => x.GetByNameAndOwnerAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((Store?)null);
 
         _transactionRepositoryMock
-            .Setup(x => x.GetFirstByFileAndStoreAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
-            .ReturnsAsync((Transaction?)null);
+            .Setup(x => x.GetByFileIdAsync(It.IsAny<Guid>()))
+            .ReturnsAsync(new List<Transaction>());
 
         // Act
         var result = await _service.ProcessFileAsync(fileId, s3Key, fileName, correlationId);
@@ -300,13 +307,18 @@ public class FileProcessingServiceIntegrationTests
             .Setup(x => x.ParseAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(validationResult);
 
+        // Setup validator to accept all records as valid
+        _validatorMock
+            .Setup(x => x.ValidateRecord(It.IsAny<CNABLineData>(), It.IsAny<int>()))
+            .Returns(new CNABValidationResult { IsValid = true });
+
         _storeRepositoryMock
             .Setup(x => x.GetByNameAndOwnerAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((Store?)null);
 
         _transactionRepositoryMock
-            .Setup(x => x.GetFirstByFileAndStoreAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
-            .ReturnsAsync((Transaction?)null);
+            .Setup(x => x.GetByFileIdAsync(It.IsAny<Guid>()))
+            .ReturnsAsync(new List<Transaction>());
 
         // Act
         var result = await _service.ProcessFileAsync(fileId, s3Key, fileName, correlationId);
