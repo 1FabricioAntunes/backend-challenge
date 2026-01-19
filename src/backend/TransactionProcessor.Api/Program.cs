@@ -288,6 +288,12 @@ app.UseAuthentication();
 // OWASP A01: Broken Access Control prevention
 app.UseAuthorization();
 
+// Optional: Add custom JWT validation middleware for enhanced logging
+// NOTE: The built-in UseAuthentication() already handles JWT validation.
+// Uncomment the line below only if you need additional custom validation logic
+// or enhanced security logging beyond the built-in handler.
+// app.UseJwtValidation();
+
 Log.Information("Authentication and authorization middleware enabled");
 
 // ============================================================================
