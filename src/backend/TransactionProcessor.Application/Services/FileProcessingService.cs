@@ -23,6 +23,7 @@ public class FileProcessingService : IFileProcessingService
     private readonly ITransactionRepository _transactionRepository;
     private readonly IFileStorageService _storageService;
     private readonly ICNABParser _parser;
+    private readonly ICNABValidator _validator;
     private readonly ApplicationDbContext _dbContext;
     private readonly ILogger<FileProcessingService> _logger;
 
@@ -32,6 +33,7 @@ public class FileProcessingService : IFileProcessingService
         ITransactionRepository transactionRepository,
         IFileStorageService storageService,
         ICNABParser parser,
+        ICNABValidator validator,
         ApplicationDbContext dbContext,
         ILogger<FileProcessingService> logger)
     {
@@ -40,6 +42,7 @@ public class FileProcessingService : IFileProcessingService
         _transactionRepository = transactionRepository ?? throw new ArgumentNullException(nameof(transactionRepository));
         _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -127,6 +130,40 @@ public class FileProcessingService : IFileProcessingService
                 _logger.LogInformation("Metrics: durationMs={DurationMs}, validationErrors={ErrorCount}", stopwatch.ElapsedMilliseconds, parseResult.Errors.Count);
                 return result;
             }
+
+            // Step 3b: Validate each record against business rules
+            _logger.LogInformation("Validating CNAB records against business rules");
+            var recordValidationErrors = new List<string>();
+            for (int i = 0; i < parseResult.ValidLines.Count; i++)
+            {
+                var line = parseResult.ValidLines[i];
+                var lineNumber = i + 1;
+                var validationResult = _validator.ValidateRecord(line, lineNumber);
+                
+                if (!validationResult.IsValid)
+                {
+                    recordValidationErrors.AddRange(validationResult.Errors);
+                }
+            }
+
+            // If any record validation errors, reject entire file
+            if (recordValidationErrors.Count > 0)
+            {
+                result.Success = false;
+                result.ValidationErrors = recordValidationErrors;
+                result.ErrorMessage = $"Record validation failed: {string.Join("; ", recordValidationErrors.Take(5))}";
+                
+                // Mark file as Rejected using domain method
+                file.MarkAsRejected(result.ErrorMessage);
+                await _fileRepository.UpdateAsync(file);
+                
+                stopwatch.Stop();
+                _logger.LogWarning("Record validation failed. Marking as Rejected. Errors: {@ValidationErrors}", recordValidationErrors);
+                _logger.LogInformation("Metrics: durationMs={DurationMs}, validationErrors={ErrorCount}", stopwatch.ElapsedMilliseconds, recordValidationErrors.Count);
+                return result;
+            }
+
+            _logger.LogInformation("All records validated successfully");
 
             // Step 4: Check idempotency - verify no transactions already exist for this file
             var existingTransactions = await _transactionRepository.GetByFileIdAsync(fileId);

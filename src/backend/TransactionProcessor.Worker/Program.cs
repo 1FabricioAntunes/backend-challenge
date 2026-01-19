@@ -51,6 +51,7 @@ var host = Host.CreateDefaultBuilder(args)
 
         // Application Services
         services.AddScoped<ICNABParser, CNABParser>();
+        services.AddScoped<ICNABValidator, CNABValidator>();
         services.AddScoped<IFileProcessingService, FileProcessingService>();
 
         // Infrastructure Services

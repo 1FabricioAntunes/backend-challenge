@@ -89,6 +89,8 @@ public class CNABParser : ICNABParser
 
     /// <summary>
     /// Parses a single CNAB line (80-character fixed-width format).
+    /// Focuses on PARSING/EXTRACTING fields only, not validating them.
+    /// Validation is delegated to CNABValidator.
     /// </summary>
     /// <param name="line">The line to parse</param>
     /// <param name="lineNumber">Line number for error reporting</param>
@@ -97,7 +99,7 @@ public class CNABParser : ICNABParser
     {
         var errors = new List<string>();
 
-        // Validate line length
+        // Validate line length (structural validation)
         if (line.Length != ExpectedLineLength)
         {
             errors.Add($"Line {lineNumber}: Invalid length {line.Length}. Expected {ExpectedLineLength} characters.");
@@ -108,54 +110,60 @@ public class CNABParser : ICNABParser
         {
             var data = new CNABLineData();
 
-            // Type (1 char, position 0)
-            if (!int.TryParse(line[0].ToString(), out var type) || type < 1 || type > 9)
+            // Type (1 char, position 0) - parse only, validation done in CNABValidator
+            if (!int.TryParse(line[0].ToString(), out var type))
             {
-                errors.Add($"Line {lineNumber}: Invalid transaction type '{line[0]}'. Must be 1-9.");
+                errors.Add($"Line {lineNumber}: Invalid transaction type '{line[0]}'. Must be a digit.");
                 return (false, null, errors);
             }
             data.Type = type;
 
-            // Date (8 chars, positions 1-8): YYYYMMDD
+            // Date (8 chars, positions 1-8): YYYYMMDD - parse only
             if (!TryParseDate(line.Substring(1, 8), out var date))
             {
-                errors.Add($"Line {lineNumber}: Invalid date '{line.Substring(1, 8)}'. Format must be YYYYMMDD.");
+                errors.Add($"Line {lineNumber}: Invalid date format '{line.Substring(1, 8)}'. Expected YYYYMMDD.");
                 return (false, null, errors);
             }
             data.Date = date;
 
-            // Amount (10 chars, positions 9-18): numeric in cents
-            if (!decimal.TryParse(line.Substring(9, 10), out var amount) || amount < 0)
+            // Amount (10 chars, positions 9-18): numeric in cents - parse only
+            if (!decimal.TryParse(line.Substring(9, 10), out var amount))
             {
-                errors.Add($"Line {lineNumber}: Invalid amount '{line.Substring(9, 10)}'. Must be numeric and non-negative.");
+                errors.Add($"Line {lineNumber}: Invalid amount format '{line.Substring(9, 10)}'. Must be numeric.");
                 return (false, null, errors);
             }
             data.Amount = amount;
 
-            // CPF (11 chars, positions 19-29)
+            // CPF (11 chars, positions 19-29) - extract only, validation in CNABValidator
             data.CPF = line.Substring(19, 11).Trim();
 
-            // Card (12 chars, positions 30-41)
+            // Card (12 chars, positions 30-41) - extract only, validation in CNABValidator
             data.Card = line.Substring(30, 12).Trim();
 
-            // Time (6 chars, positions 42-47): HHMMSS
+            // Time (6 chars, positions 42-47): HHMMSS - parse only
             if (!TryParseTime(line.Substring(42, 6), out var time))
             {
-                errors.Add($"Line {lineNumber}: Invalid time '{line.Substring(42, 6)}'. Format must be HHMMSS.");
+                errors.Add($"Line {lineNumber}: Invalid time format '{line.Substring(42, 6)}'. Expected HHMMSS.");
                 return (false, null, errors);
             }
             data.Time = time;
 
-            // Store Owner (14 chars, positions 48-61)
+            // Store Owner (14 chars, positions 48-61) - extract only, validation in CNABValidator
             data.StoreOwner = line.Substring(48, 14).Trim();
 
-            // Store Name (19 chars, positions 62-80)
+            // Store Name (19 chars, positions 62-80) - extract only, validation in CNABValidator
             data.StoreName = line.Substring(62, 19).Trim();
 
-            // Validate signed amount calculation doesn't throw
+            // Try to calculate signed amount to ensure type is valid for that operation
+            // This will throw if Type is invalid, which is caught below
             _ = data.SignedAmount;
 
             return (true, data, errors);
+        }
+        catch (InvalidOperationException ex)
+        {
+            errors.Add($"Line {lineNumber}: {ex.Message}");
+            return (false, null, errors);
         }
         catch (Exception ex)
         {
