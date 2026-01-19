@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchFileStatus, type FileStatusResponse } from '../api/fileClient';
 import FileDetailsPanel from './FileDetailsPanel';
@@ -63,6 +64,7 @@ export default function FileStatusComponent() {
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const [pollingDelayMs, setPollingDelayMs] = useState<number>(POLLING_DELAYS_MS[0]);
   const [backoffStep, setBackoffStep] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [lastCheckedTime, setLastCheckedTime] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,10 +82,12 @@ export default function FileStatusComponent() {
   const isActiveStatus = (status: FileStatus) => status === 'Processing' || status === 'Uploaded';
 
   const refreshStatus = useCallback(async () => {
+    setIsRefreshing(true);
     const activeFiles = files.filter((file) => isActiveStatus(file.status));
 
     if (activeFiles.length === 0) {
       setIsPolling(false);
+      setIsRefreshing(false);
       return;
     }
 
@@ -102,11 +106,23 @@ export default function FileStatusComponent() {
         const responseMap = new Map<string, FileStatusResponse>();
         responses.forEach((response) => responseMap.set(response.id, response));
 
-        return previous.map((file) => {
+        let hasActive = false;
+
+        const updated = previous.map((file) => {
           if (!responseMap.has(file.id)) return file;
           const update = responseMap.get(file.id)!;
-          return { ...file, ...update };
+          const next = { ...file, ...update };
+          if (isActiveStatus(next.status)) {
+            hasActive = true;
+          }
+          return next;
         });
+
+        if (!hasActive) {
+          setIsPolling(false);
+        }
+
+        return updated;
       });
 
       setLastCheckedTime(new Date().toISOString());
@@ -126,6 +142,7 @@ export default function FileStatusComponent() {
         return nextStep;
       });
     }
+    setIsRefreshing(false);
   }, [backoffStep, files]);
 
   useEffect(() => {
@@ -181,6 +198,25 @@ export default function FileStatusComponent() {
     setIsPolling(true);
   };
 
+  const handleKeyNavigation = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number
+  ) => {
+    if (sortedFiles.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = (currentIndex + 1) % sortedFiles.length;
+      setSelectedFileId(sortedFiles[nextIndex].id);
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const nextIndex = (currentIndex - 1 + sortedFiles.length) % sortedFiles.length;
+      setSelectedFileId(sortedFiles[nextIndex].id);
+    }
+  };
+
   const handleDownloadReport = (fileId: string) => {
     console.info(`Download report requested for ${fileId}`);
   };
@@ -214,6 +250,7 @@ export default function FileStatusComponent() {
             Atualizar lista
           </button>
           <span className={`polling-indicator ${isPolling ? 'polling-indicator--on' : ''}`}>
+            {isRefreshing && <span className="spinner" role="status" aria-label="Atualizando" />}
             {isPolling ? 'Polling ativo' : 'Polling inativo'} · Última atualização: {formatTime(lastCheckedTime)}
           </span>
         </div>
@@ -222,9 +259,17 @@ export default function FileStatusComponent() {
       {error && (
         <div className="file-status__error" role="alert">
           <p>{error}</p>
-          <button className="file-status__button file-status__button--secondary" onClick={() => setError(null)}>
-            Dispensar
-          </button>
+          <div className="file-status__error-actions">
+            <button
+              className="file-status__button file-status__button--secondary"
+              onClick={() => setError(null)}
+            >
+              Dispensar
+            </button>
+            <button className="file-status__button" onClick={handleManualRefresh}>
+              Tentar novamente
+            </button>
+          </div>
         </div>
       )}
 
@@ -251,7 +296,16 @@ export default function FileStatusComponent() {
               </div>
             </div>
 
-            {sortedFiles.map((file) => (
+            {sortedFiles.length === 0 && (
+              <div className="empty-state" role="status">
+                <p>Nenhum arquivo encontrado.</p>
+                <button className="file-status__button" onClick={handleManualRefresh}>
+                  Atualizar
+                </button>
+              </div>
+            )}
+
+            {sortedFiles.map((file, index) => (
               <button
                 key={file.id}
                 type="button"
@@ -260,6 +314,7 @@ export default function FileStatusComponent() {
                 }`}
                 onClick={() => handleSelect(file.id)}
                 role="row"
+                onKeyDown={(event) => handleKeyNavigation(event, index)}
                 aria-pressed={selectedFileId === file.id}
               >
                 <div className="table__cell" role="cell">

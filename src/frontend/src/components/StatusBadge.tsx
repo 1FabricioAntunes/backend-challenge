@@ -15,6 +15,7 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
   const { label, tone, icon } = statusConfig[status];
   return (
     <span className={`status-badge ${tone}`} aria-label={`Status: ${label}`}>
+      <span className="sr-only">Status: {label}</span>
       <span className="status-badge__icon" aria-hidden="true">
         {icon}
       </span>
