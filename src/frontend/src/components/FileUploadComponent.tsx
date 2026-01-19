@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import axios from 'axios';
 import apiClient from '../services/api';
 import validateCnabFile from '../utils/fileValidation';
 
@@ -19,13 +20,11 @@ const FileUploadComponent = () => {
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadStartRef = useRef<number | null>(null);
+  const autoClearTimerRef = useRef<number | null>(null);
 
-  const resetState = useCallback(() => {
+  const clearFormFields = useCallback(() => {
     setSelectedFile(null);
     setUploadProgress(0);
-    setUploadStatus('idle');
-    setErrorMessage(null);
-    setUploadedFileId(null);
     setUploadSpeed(null);
     setEtaSeconds(null);
     uploadStartRef.current = null;
@@ -33,6 +32,13 @@ const FileUploadComponent = () => {
       fileInputRef.current.value = '';
     }
   }, []);
+
+  const resetState = useCallback(() => {
+    clearFormFields();
+    setUploadStatus('idle');
+    setErrorMessage(null);
+    setUploadedFileId(null);
+  }, [clearFormFields]);
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -111,22 +117,80 @@ const FileUploadComponent = () => {
         setUploadedFileId(response.data.fileId);
         setUploadProgress(100);
       } catch (error: unknown) {
-        const message =
-          (typeof error === 'object' && error !== null && 'message' in error)
-            ? String((error as { message?: string }).message)
-            : 'Upload failed. Please try again.';
+        console.error('File upload failed', error);
+
+        let message = 'Upload failed. Please try again.';
+
+        if (axios.isAxiosError(error) && error.response) {
+          const status = error.response.status;
+          if (status === 400) {
+            message = 'Invalid file format';
+          } else if (status === 413) {
+            message = 'File too large (max 10MB)';
+          } else if (status >= 500) {
+            message = 'Server error, please try again';
+          } else if (
+            typeof error.response.data === 'object' &&
+            error.response.data !== null &&
+            'message' in error.response.data
+          ) {
+            message = String((error.response.data as { message?: string }).message ?? message);
+          }
+        }
 
         setErrorMessage(message);
         setUploadStatus('error');
         setUploadProgress(0);
+        setUploadedFileId(null);
+      } finally {
+        clearFormFields();
       }
     },
-    [selectedFile]
+    [clearFormFields, selectedFile]
   );
 
   const handleReset = useCallback(() => {
     resetState();
   }, [resetState]);
+
+  const handleRetry = useCallback(() => {
+    resetState();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, [resetState]);
+
+  useEffect(() => {
+    if (autoClearTimerRef.current) {
+      clearTimeout(autoClearTimerRef.current);
+      autoClearTimerRef.current = null;
+    }
+
+    if (uploadStatus === 'success') {
+      autoClearTimerRef.current = window.setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadedFileId(null);
+        setErrorMessage(null);
+      }, 5000);
+    }
+
+    return () => {
+      if (autoClearTimerRef.current) {
+        clearTimeout(autoClearTimerRef.current);
+        autoClearTimerRef.current = null;
+      }
+    };
+  }, [uploadStatus]);
+
+  const dismissFeedback = useCallback(() => {
+    if (autoClearTimerRef.current) {
+      clearTimeout(autoClearTimerRef.current);
+      autoClearTimerRef.current = null;
+    }
+    setUploadStatus('idle');
+    setUploadedFileId(null);
+    setErrorMessage(null);
+  }, []);
 
   return (
     <section style={{ maxWidth: '520px', margin: '0 auto' }}>
@@ -187,14 +251,58 @@ const FileUploadComponent = () => {
         )}
 
         {uploadStatus === 'success' && uploadedFileId && (
-          <div style={{ padding: '10px', backgroundColor: '#e6ffed', color: '#0f5132', borderRadius: '6px' }}>
-            Upload successful! File ID: <strong>{uploadedFileId}</strong>
+          <div style={{ padding: '12px', backgroundColor: '#e6ffed', color: '#0f5132', borderRadius: '6px', display: 'grid', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>Upload successful!</strong> File ID: <strong>{uploadedFileId}</strong></span>
+              <button
+                type="button"
+                onClick={dismissFeedback}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#0f5132', fontWeight: 700 }}
+                aria-label="Close success message"
+              >
+                ×
+              </button>
+            </div>
+            <a
+              href={`/files/${uploadedFileId}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#0b6b38', textDecoration: 'underline', fontWeight: 600 }}
+            >
+              View uploaded file status
+            </a>
           </div>
         )}
 
         {uploadStatus === 'error' && errorMessage && (
-          <div style={{ padding: '10px', backgroundColor: '#ffefef', color: '#8a1f1f', borderRadius: '6px' }}>
-            {errorMessage}
+          <div style={{ padding: '12px', backgroundColor: '#ffefef', color: '#8a1f1f', borderRadius: '6px', display: 'grid', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{errorMessage}</span>
+              <button
+                type="button"
+                onClick={dismissFeedback}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#8a1f1f', fontWeight: 700 }}
+                aria-label="Dismiss error message"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleRetry}
+                style={{ padding: '8px 14px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                style={{ padding: '8px 14px', cursor: 'pointer' }}
+              >
+                Reset
+              </button>
+            </div>
           </div>
         )}
       </form>
