@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.UseCases.Transactions.Queries;
@@ -20,6 +21,11 @@ public class TransactionsQueryRequest
     public int PageSize { get; init; } = 50;
 }
 
+/// <summary>
+/// Endpoint to retrieve transactions with optional filters and pagination.
+/// GET /api/transactions/v1
+/// </summary>
+[Authorize] // ✅ OWASP A01: Broken Access Control - Require JWT authentication
 public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedResult<TransactionDto>>
 {
     private readonly IMediator _mediator;
@@ -34,7 +40,6 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
     public override void Configure()
     {
         Get("/api/transactions/v1");
-        AllowAnonymous();
         Description(b => b.Produces(200)
             .Produces<ApiErrorResponse>(400)
             .Produces<ApiErrorResponse>(404));

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.Queries.Files;
 using TransactionProcessor.Infrastructure.Metrics;
@@ -23,6 +24,7 @@ public class GetFileByIdRequest
 /// Endpoint to retrieve a single file by ID
 /// GET /api/files/v1/{id}
 /// </summary>
+[Authorize] // ✅ OWASP A01: Broken Access Control - Require JWT authentication
 public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
 {
     private readonly IMediator _mediator;
@@ -35,7 +37,6 @@ public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
     public override void Configure()
     {
         Get("/api/files/v1/{id}");
-        AllowAnonymous();
         Description(d => d
             .Produces<FileDto>(200, "application/json")
             .Produces<ApiErrorResponse>(404, "application/json")
