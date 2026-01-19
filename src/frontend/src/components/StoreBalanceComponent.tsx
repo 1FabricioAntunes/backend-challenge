@@ -177,12 +177,22 @@ const StoreBalanceComponent = () => {
           <input
             type="text"
             className="store-balance__search-input"
-            placeholder="Buscar por código ou nome da loja..."
+            placeholder="Buscar por nome ou código..."
             value={searchText}
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               filterStores(e.target.value)
             }
           />
+          {searchText && (
+            <button
+              className="store-balance__search-clear"
+              onClick={() => filterStores('')}
+              title="Limpar busca"
+              aria-label="Limpar busca"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         <div className="store-balance__sort-group">
@@ -241,6 +251,10 @@ const StoreBalanceComponent = () => {
       {/* Store Table */}
       {!isLoading && hasStores && (
         <>
+          <div className="store-balance__result-info">
+            Mostrando {filteredStores.length} de {stores.length} loja(s)
+          </div>
+
           <div className="store-balance__table-wrapper">
             <table className="store-balance__table">
               <thead className="store-balance__table-head">
