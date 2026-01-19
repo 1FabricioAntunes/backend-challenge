@@ -14,6 +14,7 @@ using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using TransactionProcessor.Infrastructure.Repositories;
+using TransactionProcessor.Infrastructure.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,15 @@ builder.Host.UseSerilog((context, config) =>
 });
 
 Log.Information("TransactionProcessor API starting up...");
+
+// ============================================================================
+// SECRETS MANAGER CONFIGURATION
+// ============================================================================
+// Register Secrets Manager service for AWS Secrets Manager integration
+// Supports both LocalStack (development) and AWS Secrets Manager (production)
+builder.Services.AddSingleton<SecretsManagerService>();
+
+Log.Information("Secrets Manager configured");
 
 // ============================================================================
 // DATABASE CONFIGURATION

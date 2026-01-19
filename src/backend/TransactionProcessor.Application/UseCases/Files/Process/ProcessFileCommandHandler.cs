@@ -196,7 +196,7 @@ public class ProcessFileCommandHandler : IRequestHandler<ProcessFileCommand, Pro
             // ========================================================================
             // METRICS: Record validation duration
             // ========================================================================
-            MetricsService.FileValidationDurationSeconds
+            MetricsService.ValidationDurationSeconds
                 .WithLabels("cnab")
                 .Observe(validationStopwatch.Elapsed.TotalSeconds);
 

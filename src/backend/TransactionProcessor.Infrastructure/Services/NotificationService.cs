@@ -490,8 +490,7 @@ public class NotificationService : INotificationService
                 fileId,
                 correlationId);
 
-            // TODO: Publish to SQS notification-dlq when IMessageQueueService supports it
-            // await _messageQueueService.PublishAsync(dlqMessage, correlationId, cancellationToken);
+            await _messageQueueService.PublishAsync(dlqMessage, correlationId, cancellationToken);
         }
         catch (Exception ex)
         {

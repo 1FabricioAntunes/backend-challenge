@@ -200,7 +200,7 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
             // ========================================================================
             // METRICS: Record successful file upload
             // ========================================================================
-            MetricsService.RecordFileUploaded(req.File.FileName, req.File.Length, "success");
+            MetricsService.RecordFileProcessed("success");
             MetricsService.HttpRequestDurationSeconds
                 .WithLabels("POST", "/api/files/v1", "202")
                 .Observe(stopwatch.Elapsed.TotalSeconds);
