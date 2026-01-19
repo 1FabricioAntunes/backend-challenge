@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import FileDetailsPanel from './FileDetailsPanel';
 import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileStatusComponent.css';
 
-type FileRecord = {
+export type FileRecord = {
   id: string;
   name: string;
   uploadTime: string;
@@ -149,6 +150,26 @@ export default function FileStatusComponent() {
     }
   };
 
+  const handleRetryFile = (fileId: string) => {
+    setFiles((previous) =>
+      previous.map((file) =>
+        file.id === fileId
+          ? { ...file, status: 'Uploaded', errorMessage: undefined }
+          : file
+      )
+    );
+    setError(null);
+    startPolling();
+  };
+
+  const handleDownloadReport = (fileId: string) => {
+    console.info(`Download report requested for ${fileId}`);
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedFileId(null);
+  };
+
   const formatTime = (value: string | null) => {
     if (!value) return '—';
     return new Date(value).toLocaleTimeString('pt-BR', {
@@ -242,46 +263,13 @@ export default function FileStatusComponent() {
 
         <aside className="file-status__detail" aria-live="polite">
           {selectedFile ? (
-            <div className="detail-card">
-              <p className="detail-eyebrow">Arquivo selecionado</p>
-              <h3 className="detail-title">{selectedFile.name}</h3>
-              <p className="detail-id">ID: {selectedFile.id}</p>
-
-              <div className="detail-grid">
-                <div className="detail-item">
-                  <p className="detail-label">Status</p>
-                  <p className="detail-value">
-                    <StatusBadge status={selectedFile.status} />
-                  </p>
-                </div>
-                <div className="detail-item">
-                  <p className="detail-label">Enviado em</p>
-                  <p className="detail-value">{formatDateTime(selectedFile.uploadTime)}</p>
-                </div>
-                <div className="detail-item">
-                  <p className="detail-label">Transações</p>
-                  <p className="detail-value">
-                    {typeof selectedFile.transactionCount === 'number'
-                      ? selectedFile.transactionCount
-                      : 'Em processamento'}
-                  </p>
-                </div>
-              </div>
-
-              {selectedFile.errorMessage && (
-                <div className="detail-error" role="alert">
-                  <p className="detail-error__title">Motivo da rejeição</p>
-                  <p className="detail-error__message">{selectedFile.errorMessage}</p>
-                </div>
-              )}
-
-              <div className="detail-actions">
-                <button className="file-status__button">Retry</button>
-                <button className="file-status__button file-status__button--secondary">
-                  Download relatório
-                </button>
-              </div>
-            </div>
+            <FileDetailsPanel
+              file={selectedFile}
+              lastCheckedTime={lastCheckedTime}
+              onRetry={() => handleRetryFile(selectedFile.id)}
+              onDownloadReport={() => handleDownloadReport(selectedFile.id)}
+              onClose={handleCloseDetail}
+            />
           ) : (
             <div className="detail-placeholder">
               <p>Selecione um arquivo para ver detalhes.</p>

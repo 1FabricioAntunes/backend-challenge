@@ -262,6 +262,26 @@
   gap: 0.75rem;
 }
 
+.detail-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.detail-close {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+  color: #4b5563;
+}
+
+.detail-close:hover {
+  color: #111827;
+}
+
 .detail-eyebrow {
   margin: 0;
   text-transform: uppercase;
@@ -337,6 +357,43 @@
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.metric-card {
+  background: #f9fafb;
+  border: 1px solid #eef1f5;
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.metric-label {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.metric-value {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #111827;
+  font-weight: 800;
+}
+
+.metric-helper {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
 }
 
 .detail-placeholder {
