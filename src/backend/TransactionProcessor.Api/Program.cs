@@ -8,12 +8,14 @@ using Serilog;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using TransactionProcessor.Api.Exceptions;
+using TransactionProcessor.Api.Extensions;
 using TransactionProcessor.Api.Middleware;
 using TransactionProcessor.Application.Queries.Files;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using TransactionProcessor.Infrastructure.Repositories;
+using TransactionProcessor.Infrastructure.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,14 +40,23 @@ builder.Host.UseSerilog((context, config) =>
 Log.Information("TransactionProcessor API starting up...");
 
 // ============================================================================
+// SECRETS MANAGER CONFIGURATION
+// ============================================================================
+// Generate correlation ID for startup tracking
+var startupCorrelationId = Guid.NewGuid().ToString();
+
+// Load secrets from AWS Secrets Manager (LocalStack in dev, AWS in prod)
+// Secrets are loaded at startup, validated, and cached in memory (fail-fast pattern)
+// This returns the loaded secrets for immediate use
+var appSecrets = builder.Services.AddSecretsManagementAndGetSecrets(builder.Configuration, startupCorrelationId);
+
+// ============================================================================
 // DATABASE CONFIGURATION
 // ============================================================================
-// Get connection string from appsettings or environment variables
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException("Connection string 'Default' not found in configuration");
+// Get connection string from loaded secrets (already validated)
+var connectionString = appSecrets.Database.ConnectionString;
 
-Log.Information("Configuring database with connection string: {ConnectionString}", 
-    $"Host={builder.Configuration.GetConnectionString("Default")?.Split("Host=")[1]?.Split(";")[0]}");
+Log.Information("[{CorrelationId}] Configuring database connection", startupCorrelationId);
 
 // Configure Entity Framework Core with PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
