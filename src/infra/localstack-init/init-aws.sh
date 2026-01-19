@@ -87,3 +87,15 @@ awslocal cloudwatch put-metric-alarm \
   >/dev/null 2>&1 || true
 
 echo "[init] LocalStack AWS resource initialization complete."
+# ============================================================================
+# SECRETS MANAGER INITIALIZATION
+# ============================================================================
+# Call the secrets initialization script
+if [ -f "/etc/localstack/init/ready.d/init-secrets.sh" ]; then
+  echo "[init] Executing secrets initialization script..."
+  bash /etc/localstack/init/ready.d/init-secrets.sh
+else
+  echo "[init] Warning: init-secrets.sh not found, skipping secrets initialization"
+fi
+
+echo "[init] All LocalStack initialization complete."
