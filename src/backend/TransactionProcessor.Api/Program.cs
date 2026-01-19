@@ -11,6 +11,7 @@ using TransactionProcessor.Api.Exceptions;
 using TransactionProcessor.Api.Middleware;
 using TransactionProcessor.Application.Queries.Files;
 using TransactionProcessor.Domain.Repositories;
+using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using TransactionProcessor.Infrastructure.Repositories;
 
@@ -61,6 +62,15 @@ builder.Services.AddScoped<IFileRepository, FileRepository>();
 // Register MediatR for query/command handling
 builder.Services.AddMediatR(config =>
     config.RegisterServicesFromAssemblyContaining<GetFilesQuery>());
+
+// ============================================================================
+// METRICS CONFIGURATION (PROMETHEUS)
+// ============================================================================
+// Initialize Prometheus metrics (MetricsService uses static metrics)
+// This ensures all metrics are registered with the default registry
+builder.Services.AddSingleton(_ => new MetricsService());
+
+Log.Information("Prometheus metrics initialized");
 
 // ============================================================================
 // FASTENDPOINTS CONFIGURATION
@@ -129,6 +139,9 @@ app.UseCorrelationId();
 
 // Add security headers middleware
 app.UseSecurityHeaders();
+
+// Add metrics middleware (track HTTP metrics)
+app.UseMetrics();
 
 // ============================================================================
 // LOGGING MIDDLEWARE
