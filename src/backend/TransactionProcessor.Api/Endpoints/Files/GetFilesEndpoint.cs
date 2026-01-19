@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.Queries.Files;
+using TransactionProcessor.Infrastructure.Metrics;
 using ApiErrorResponse = TransactionProcessor.Api.Models.ErrorResponse;
 
 namespace TransactionProcessor.Api.Endpoints.Files;
@@ -49,9 +51,21 @@ public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
 
     public override async Task HandleAsync(GetFilesRequest req, CancellationToken ct)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         // Validate pagination parameters
         if (req.Page < 1)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record validation error
+            // ========================================================================
+            MetricsService.RecordError("invalid_page_number");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1", "400")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 400;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(
@@ -64,6 +78,16 @@ public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
 
         if (req.PageSize < 1 || req.PageSize > 100)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record validation error
+            // ========================================================================
+            MetricsService.RecordError("invalid_page_size");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1", "400")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 400;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(
@@ -80,11 +104,30 @@ public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
             var query = new GetFilesQuery(req.Page, req.PageSize);
             var result = await _mediator.Send(query, ct);
 
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record successful query
+            // ========================================================================
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1", "200")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 200;
             await HttpContext.Response.WriteAsJsonAsync(result, cancellationToken: ct);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record error
+            // ========================================================================
+            MetricsService.RecordError("unhandled_exception");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/files/v1", "500")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 500;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(

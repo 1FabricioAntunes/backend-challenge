@@ -202,7 +202,7 @@ public class UploadFileValidator : Validator<UploadFileRequest>
     /// 
     /// Patterns Blocked:
     /// - Path traversal: ../, ..\\
-    /// - Shell metacharacters: ; | & $ ` \n \r
+    /// - Shell metacharacters: ; | and $ ` \n \r
     /// - SQL patterns: --, /*, */
     /// - Environment variables: $VAR, %VAR%
     /// - Control characters: 0x00-0x1F

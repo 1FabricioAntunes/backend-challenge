@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using FastEndpoints;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TransactionProcessor.Application.DTOs;
 using TransactionProcessor.Application.UseCases.Transactions.Queries;
+using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http.HttpResults;
 using ApiErrorResponse = TransactionProcessor.Api.Models.ErrorResponse;
@@ -40,6 +42,8 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
 
     public override async Task HandleAsync(TransactionsQueryRequest req, CancellationToken ct)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         // Basic parameter validation → 400
         var errors = new List<string>();
         if (req.Page < 1)
@@ -51,6 +55,16 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
 
         if (errors.Count > 0)
         {
+            stopwatch.Stop();
+
+            // ========================================================================
+            // METRICS: Record validation error
+            // ========================================================================
+            MetricsService.RecordError("invalid_parameters");
+            MetricsService.HttpRequestDurationSeconds
+                .WithLabels("GET", "/api/transactions/v1", "400")
+                .Observe(stopwatch.Elapsed.TotalSeconds);
+
             HttpContext.Response.StatusCode = 400;
             await HttpContext.Response.WriteAsJsonAsync(
                 new ApiErrorResponse(string.Join(" ", errors), "INVALID_PARAMETERS", 400),
@@ -61,9 +75,26 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
         // If filtering by StoreId, verify it exists → 404
         if (req.StoreId.HasValue)
         {
+            var checkStopwatch = Stopwatch.StartNew();
             var exists = await _db.Stores.AsNoTracking().AnyAsync(s => s.Id == req.StoreId.Value, ct);
+            checkStopwatch.Stop();
+
+            MetricsService.DatabaseQueryDurationSeconds
+                .WithLabels("select", "store")
+                .Observe(checkStopwatch.Elapsed.TotalSeconds);
+
             if (!exists)
             {
+                stopwatch.Stop();
+
+                // ========================================================================
+                // METRICS: Record not found error
+                // ========================================================================
+                MetricsService.RecordError("store_not_found");
+                MetricsService.HttpRequestDurationSeconds
+                    .WithLabels("GET", "/api/transactions/v1", "404")
+                    .Observe(stopwatch.Elapsed.TotalSeconds);
+
                 HttpContext.Response.StatusCode = 404;
                 await HttpContext.Response.WriteAsJsonAsync(
                     new ApiErrorResponse("Store not found.", "STORE_NOT_FOUND", 404),
@@ -82,6 +113,16 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
         };
 
         var result = await _mediator.Send(query, ct);
+        
+        stopwatch.Stop();
+
+        // ========================================================================
+        // METRICS: Record successful query
+        // ========================================================================
+        MetricsService.HttpRequestDurationSeconds
+            .WithLabels("GET", "/api/transactions/v1", "200")
+            .Observe(stopwatch.Elapsed.TotalSeconds);
+
         HttpContext.Response.StatusCode = 200;
         await HttpContext.Response.WriteAsJsonAsync(result, cancellationToken: ct);
     }

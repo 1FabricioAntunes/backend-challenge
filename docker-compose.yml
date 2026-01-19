@@ -83,6 +83,65 @@ services:
     networks:
       - transactionprocessor-network
 
+  # Prometheus - Metrics collection and monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      # Mount Prometheus configuration
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Persist metrics data
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=5m'
+    environment:
+      - TZ=UTC
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
+  # Grafana - Metrics visualization and dashboarding
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: ''
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      # Mount provisioning configurations
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Mount dashboard JSON
+      - ./infra/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/transaction-processor-main.json:ro
+      # Persist Grafana data
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - transactionprocessor-network
+
   # Frontend (Vite/React)
   frontend:
     build:
@@ -112,6 +171,10 @@ volumes:
   postgres-data:
     driver: local
   localstack-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:
