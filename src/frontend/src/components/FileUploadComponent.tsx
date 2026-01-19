@@ -1,9 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import apiClient from '../services/api';
-
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const CNAB_LINE_LENGTH = 80;
+import validateCnabFile from '../utils/fileValidation';
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -30,33 +28,6 @@ const FileUploadComponent = () => {
     }
   }, []);
 
-  const validateFile = useCallback(async (file: File): Promise<string | null> => {
-    if (!file.name.toLowerCase().endsWith('.txt')) {
-      return 'Only .txt CNAB files are allowed.';
-    }
-
-    if (file.size === 0) {
-      return 'File is empty.';
-    }
-
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return 'File must be smaller than 10MB.';
-    }
-
-    // Lightweight CNAB sanity check: first line should look like a fixed-width record
-    const preview = await file.slice(0, 512).text();
-    const firstLine = (preview.split(/\r?\n/)[0] || '').trim();
-    if (firstLine.length < CNAB_LINE_LENGTH) {
-      return 'File does not appear to be a CNAB file (first line too short).';
-    }
-
-    if (!/^\d/.test(firstLine)) {
-      return 'File does not appear to be a CNAB file (expected numeric start).';
-    }
-
-    return null;
-  }, []);
-
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -65,9 +36,9 @@ const FileUploadComponent = () => {
         return;
       }
 
-      const validationError = await validateFile(file);
-      if (validationError) {
-        setErrorMessage(validationError);
+      const { isValid, error } = await validateCnabFile(file);
+      if (!isValid) {
+        setErrorMessage(error ?? 'Invalid file.');
         setSelectedFile(null);
         setUploadStatus('error');
         setUploadedFileId(null);
