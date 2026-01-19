@@ -1,6 +1,14 @@
 namespace TransactionProcessor.Infrastructure.Secrets;
 
 /// <summary>
+/// Marks a property as containing sensitive data that should never be logged
+/// </summary>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+public class SensitiveAttribute : Attribute
+{
+}
+
+/// <summary>
 /// Configuration for database secrets.
 /// </summary>
 public class DatabaseSecrets
@@ -8,6 +16,7 @@ public class DatabaseSecrets
     /// <summary>
     /// PostgreSQL connection string (hierarchical name: TransactionProcessor/Database/ConnectionString)
     /// </summary>
+    [Sensitive]
     public string ConnectionString { get; set; } = string.Empty;
 }
 
@@ -24,11 +33,13 @@ public class AwsS3Secrets
     /// <summary>
     /// AWS access key ID for S3 (hierarchical name: TransactionProcessor/AWS/S3/AccessKeyId)
     /// </summary>
+    [Sensitive]
     public string AccessKeyId { get; set; } = string.Empty;
 
     /// <summary>
     /// AWS secret access key for S3 (hierarchical name: TransactionProcessor/AWS/S3/SecretAccessKey)
     /// </summary>
+    [Sensitive]
     public string SecretAccessKey { get; set; } = string.Empty;
 
     /// <summary>
@@ -72,6 +83,7 @@ public class OAuthSecrets
     /// OAuth client secret (hierarchical name: TransactionProcessor/OAuth/ClientSecret)
     /// Production only - not used in development with LocalStack Cognito
     /// </summary>
+    [Sensitive]
     public string ClientSecret { get; set; } = string.Empty;
 
     /// <summary>
