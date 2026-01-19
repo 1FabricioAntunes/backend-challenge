@@ -1,0 +1,391 @@
+/* Container */
+.file-status {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.file-status__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.file-status__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  color: #667eea;
+  font-weight: 700;
+}
+
+.file-status__title {
+  margin: 0.2rem 0 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #222;
+}
+
+.file-status__subtitle {
+  margin: 0.4rem 0 0;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.file-status__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.file-status__button {
+  padding: 0.65rem 1rem;
+  background: #4a90e2;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.file-status__button:hover {
+  background: #3a78c0;
+}
+
+.file-status__button--secondary {
+  background: #eef1f7;
+  color: #2c3e50;
+  border: 1px solid #d6dce8;
+}
+
+.file-status__button--secondary:hover {
+  background: #e0e6f2;
+}
+
+.polling-indicator {
+  padding: 0.5rem 0.75rem;
+  background: #f3f4f6;
+  border-radius: 6px;
+  color: #555;
+  font-weight: 600;
+  border: 1px solid #e2e6ee;
+}
+
+.polling-indicator--on {
+  background: #e6f4ff;
+  color: #0b5394;
+  border-color: #b6d7ff;
+}
+
+.file-status__error {
+  padding: 1rem;
+  background: #fff3f3;
+  border: 1px solid #f5c2c7;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Layout */
+.file-status__layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+}
+
+.file-status__table-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+.table__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.table__meta-count {
+  margin: 0;
+  font-weight: 700;
+  color: #222;
+}
+
+.table__meta-note {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.table__wrapper {
+  display: grid;
+}
+
+.table__row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 0.6fr;
+  align-items: center;
+  border-bottom: 1px solid #eef1f5;
+  text-align: left;
+  padding: 0.9rem 1.25rem;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.table__row:last-child {
+  border-bottom: none;
+}
+
+.table__row:hover {
+  background: #f8fbff;
+}
+
+.table__row--head {
+  background: #f3f4f6;
+  font-weight: 700;
+  color: #333;
+  cursor: default;
+}
+
+.table__row--head:hover {
+  background: #f3f4f6;
+}
+
+.table__row--body {
+  color: #333;
+}
+
+.table__row--active {
+  background: #eef3ff;
+  box-shadow: inset 3px 0 0 #667eea;
+}
+
+.table__cell {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.table__cell--head {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table__cell--right {
+  justify-self: end;
+}
+
+.file-name {
+  margin: 0;
+  font-weight: 700;
+  color: #111827;
+}
+
+.file-id {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.file-date {
+  margin: 0;
+  color: #374151;
+  font-weight: 600;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.badge--info {
+  background: #e7f0ff;
+  color: #1d4ed8;
+}
+
+.badge--warning {
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.badge--success {
+  background: #e6ffed;
+  color: #0f5132;
+}
+
+.badge--danger {
+  background: #ffe8e8;
+  color: #b91c1c;
+}
+
+/* Detail Panel */
+.file-status__detail {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  min-height: 320px;
+}
+
+.detail-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.detail-eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.detail-title {
+  margin: 0;
+  font-size: 1.3rem;
+  color: #111827;
+}
+
+.detail-id {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.detail-item {
+  background: #f9fafb;
+  border: 1px solid #eef1f5;
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.detail-label {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.detail-value {
+  margin: 0;
+  font-size: 1rem;
+  color: #111827;
+  font-weight: 700;
+}
+
+.detail-error {
+  border-radius: 10px;
+  border: 1px solid #f5c2c7;
+  background: #fff3f3;
+  padding: 0.9rem;
+}
+
+.detail-error__title {
+  margin: 0 0 0.25rem 0;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.detail-error__message {
+  margin: 0;
+  color: #7f1d1d;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.detail-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #6b7280;
+}
+
+/* Responsive */
+@media (max-width: 960px) {
+  .file-status__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .table__row {
+    grid-template-columns: 1.2fr 1fr 1fr 0.6fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .file-status {
+    padding: 1rem;
+  }
+
+  .file-status__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .table__row {
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-areas:
+      'file file'
+      'date status'
+      'count count';
+    gap: 0.4rem 0.75rem;
+  }
+
+  .table__cell:nth-child(1) {
+    grid-area: file;
+  }
+
+  .table__cell:nth-child(2) {
+    grid-area: date;
+  }
+
+  .table__cell:nth-child(3) {
+    grid-area: status;
+  }
+
+  .table__cell:nth-child(4) {
+    grid-area: count;
+    justify-self: start;
+  }
+
+  .table__row--head {
+    display: none;
+  }
+}
