@@ -116,14 +116,19 @@
   transition: all 0.2s;
 }
 
-.logout-button:hover {
+.logout-button:hover:not(:disabled) {
   background-color: #edf2f7;
   border-color: #cbd5e0;
   color: #2d3748;
 }
 
-.logout-button:active {
+.logout-button:active:not(:disabled) {
   transform: scale(0.98);
+}
+
+.logout-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .logout-button:focus-visible {

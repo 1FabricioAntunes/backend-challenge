@@ -1,5 +1,6 @@
 import React from 'react';
 import Sidebar from './Sidebar';
+import { useAuth } from '../context/AuthContext';
 import '../styles/Layout.css';
 import '../styles/responsive.css';
 
@@ -16,8 +17,35 @@ interface LayoutProps {
  * - Header with app branding and user controls
  * - Footer with version/info placeholder
  * - Accessible semantic HTML structure
+ * - Integrated authentication state and logout functionality
  */
 export const Layout: React.FC<LayoutProps> = ({ children, pageTitle }) => {
+  const { user, isAuthenticated, logout } = useAuth();
+
+  /**
+   * Handle logout action
+   * Clears authentication state and redirects to login
+   */
+  const handleLogout = () => {
+    logout();
+    // Optional: Redirect to login page or home
+    // window.location.href = '/login';
+  };
+
+  /**
+   * Get user initials for avatar display
+   * Falls back to 'U' if no user or name
+   */
+  const getUserInitials = (): string => {
+    if (!user?.name) return 'U';
+    
+    const nameParts = user.name.trim().split(' ');
+    if (nameParts.length >= 2) {
+      return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+    }
+    return user.name.substring(0, 2).toUpperCase();
+  };
+
   return (
     <div className="layout">
       {/* Header */}
@@ -34,19 +62,23 @@ export const Layout: React.FC<LayoutProps> = ({ children, pageTitle }) => {
           </div>
           
           <div className="header-right">
-            {/* User info placeholder - will be populated by AuthContext */}
+            {/* User info - populated from AuthContext */}
             <div className="user-info">
-              <div className="user-avatar" aria-label="User avatar">
-                <span>U</span>
+              <div className="user-avatar" aria-label="User avatar" title={user?.email || 'User'}>
+                <span>{getUserInitials()}</span>
               </div>
-              <span className="user-name">User</span>
+              <span className="user-name">
+                {isAuthenticated ? user?.name || 'User' : 'Guest'}
+              </span>
             </div>
             
-            {/* Logout button slot - will be wired in auth integration */}
+            {/* Logout button - wired to auth context */}
             <button 
               className="logout-button"
+              onClick={handleLogout}
               aria-label="Logout"
               title="Logout"
+              disabled={!isAuthenticated}
             >
               Logout
             </button>
