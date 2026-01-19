@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchFileStatus, type FileStatusResponse } from '../api/fileClient';
 import FileDetailsPanel from './FileDetailsPanel';
 import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileStatusComponent.css';
@@ -11,6 +12,8 @@ export type FileRecord = {
   transactionCount?: number;
   errorMessage?: string;
 };
+
+const POLLING_DELAYS_MS = [3000, 6000, 10000];
 
 const seedFiles: FileRecord[] = [
   {
@@ -58,7 +61,8 @@ export default function FileStatusComponent() {
   const [files, setFiles] = useState<FileRecord[]>(seedFiles);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(seedFiles[0]?.id ?? null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
-  const [pollingIntervalId, setPollingIntervalId] = useState<number | null>(null);
+  const [pollingDelayMs, setPollingDelayMs] = useState<number>(POLLING_DELAYS_MS[0]);
+  const [backoffStep, setBackoffStep] = useState<number>(0);
   const [lastCheckedTime, setLastCheckedTime] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,68 +79,81 @@ export default function FileStatusComponent() {
 
   const isActiveStatus = (status: FileStatus) => status === 'Processing' || status === 'Uploaded';
 
-  const stopPolling = useCallback(() => {
-    if (pollingIntervalId !== null) {
-      clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
+  const refreshStatus = useCallback(async () => {
+    const activeFiles = files.filter((file) => isActiveStatus(file.status));
+
+    if (activeFiles.length === 0) {
+      setIsPolling(false);
+      return;
     }
-    setIsPolling(false);
-  }, [pollingIntervalId]);
 
-  const refreshStatus = useCallback(() => {
-    let hasActive = false;
-    let shouldStop = false;
+    console.info(
+      `[file-status] polling ${activeFiles.length} active file(s): ${activeFiles
+        .map((file) => file.id)
+        .join(', ')}`
+    );
 
-    setFiles((previous) => {
-      const updated = previous.map((file) => {
-        if (file.status === 'Processing') {
-          const nextStatus: FileStatus = 'Processed';
-          return {
-            ...file,
-            status: nextStatus,
-            transactionCount: file.transactionCount ?? 0,
-          };
-        }
+    try {
+      const responses = await Promise.all(
+        activeFiles.map((file) => fetchFileStatus(file.id))
+      );
 
-        if (file.status === 'Uploaded') {
-          hasActive = true;
-          return { ...file, status: 'Processing', transactionCount: file.transactionCount ?? 0 };
-        }
+      setFiles((previous) => {
+        const responseMap = new Map<string, FileStatusResponse>();
+        responses.forEach((response) => responseMap.set(response.id, response));
 
-        return file;
+        return previous.map((file) => {
+          if (!responseMap.has(file.id)) return file;
+          const update = responseMap.get(file.id)!;
+          return { ...file, ...update };
+        });
       });
 
-      hasActive = updated.some((item) => isActiveStatus(item.status));
-      shouldStop = !hasActive;
-      return updated;
-    });
+      setLastCheckedTime(new Date().toISOString());
+      setError(null);
 
-    setLastCheckedTime(new Date().toISOString());
+      if (backoffStep !== 0) {
+        setBackoffStep(0);
+        setPollingDelayMs(POLLING_DELAYS_MS[0]);
+      }
+    } catch (err) {
+      console.error('[file-status] polling failed', err);
+      setError('Não foi possível atualizar o status. Tentaremos novamente em instantes.');
 
-    if (shouldStop) {
-      stopPolling();
+      setBackoffStep((currentStep) => {
+        const nextStep = Math.min(currentStep + 1, POLLING_DELAYS_MS.length - 1);
+        setPollingDelayMs(POLLING_DELAYS_MS[nextStep]);
+        return nextStep;
+      });
     }
-  }, [stopPolling]);
-
-  const startPolling = useCallback(() => {
-    if (pollingIntervalId !== null) return;
-    const id = window.setInterval(refreshStatus, 3000);
-    setPollingIntervalId(id);
-    setIsPolling(true);
-  }, [pollingIntervalId, refreshStatus]);
+  }, [backoffStep, files]);
 
   useEffect(() => {
     const hasActive = files.some((file) => isActiveStatus(file.status));
     if (hasActive) {
-      startPolling();
+      setIsPolling(true);
     } else {
-      stopPolling();
+      setIsPolling(false);
+    }
+  }, [files]);
+
+  useEffect(() => {
+    if (!isPolling) return;
+
+    const hasActive = files.some((file) => isActiveStatus(file.status));
+    if (!hasActive) {
+      setIsPolling(false);
+      return;
     }
 
+    const timeoutId = window.setTimeout(() => {
+      refreshStatus();
+    }, pollingDelayMs);
+
     return () => {
-      stopPolling();
+      window.clearTimeout(timeoutId);
     };
-  }, [files, startPolling, stopPolling]);
+  }, [files, isPolling, pollingDelayMs, refreshStatus]);
 
   const handleSelect = (fileId: string) => {
     setSelectedFileId(fileId);
@@ -144,10 +161,10 @@ export default function FileStatusComponent() {
 
   const handleManualRefresh = () => {
     setError(null);
+    setBackoffStep(0);
+    setPollingDelayMs(POLLING_DELAYS_MS[0]);
+    setIsPolling(true);
     refreshStatus();
-    if (pollingIntervalId === null) {
-      startPolling();
-    }
   };
 
   const handleRetryFile = (fileId: string) => {
@@ -159,7 +176,9 @@ export default function FileStatusComponent() {
       )
     );
     setError(null);
-    startPolling();
+    setBackoffStep(0);
+    setPollingDelayMs(POLLING_DELAYS_MS[0]);
+    setIsPolling(true);
   };
 
   const handleDownloadReport = (fileId: string) => {
