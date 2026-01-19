@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import axios, { AxiosError } from 'axios';
 import '../styles/TransactionQueryComponent.css';
 
 // TypeScript Interfaces
@@ -80,7 +81,7 @@ const TransactionQueryComponent = ({
     }));
   }, []);
 
-  const applyFilters = useCallback(() => {
+  const applyFilters = useCallback(async () => {
     // Validate date range if both dates are set
     if (filters.startDate && filters.endDate) {
       if (filters.startDate > filters.endDate) {
@@ -95,9 +96,59 @@ const TransactionQueryComponent = ({
     // Reset to page 1 when applying new filters
     setCurrentPage(1);
 
-    // TODO: Implement API call in next step
-    console.log('Applying filters:', filters);
-  }, [filters]);
+    try {
+      // Set loading state
+      setIsLoading(true);
+
+      // Build query parameters
+      const params: Record<string, string | number> = {
+        page: 1,
+        pageSize: pageSize,
+      };
+
+      if (filters.storeId) {
+        params.storeId = filters.storeId;
+      }
+      if (filters.startDate) {
+        params.startDate = filters.startDate;
+      }
+      if (filters.endDate) {
+        params.endDate = filters.endDate;
+      }
+
+      // Call API
+      const response = await axios.get('/api/transactions/v1', { params });
+
+      // Parse response
+      const data = response.data;
+      setTransactions(data.transactions || []);
+      setTotalCount(data.totalCount || 0);
+
+      // Clear error on success
+      setError(null);
+    } catch (err) {
+      // Handle errors
+      const axiosError = err as AxiosError<{ error?: { message?: string } }>;
+      let errorMessage = 'Erro ao carregar transações.';
+
+      if (!axiosError.response) {
+        // Network error
+        errorMessage = 'Erro de conexão. Verifique sua internet.';
+      } else if (axiosError.response.status === 400) {
+        // Bad request (invalid filters)
+        errorMessage = 'Filtros inválidos. Verifique os valores.';
+      } else if (axiosError.response.status === 500) {
+        // Server error
+        errorMessage = 'Erro no servidor. Tente novamente.';
+      }
+
+      setError(errorMessage);
+      console.error('Error fetching transactions:', err);
+    } finally {
+      // Clear loading state
+      setIsLoading(false);
+    }
+  }, [filters, pageSize]);
 
   const clearFilters = useCallback(() => {
     setFilters({
