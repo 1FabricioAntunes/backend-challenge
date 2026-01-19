@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileStatusComponent.css';
 
@@ -57,6 +57,8 @@ export default function FileStatusComponent() {
   const [files, setFiles] = useState<FileRecord[]>(seedFiles);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(seedFiles[0]?.id ?? null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
+  const [pollingIntervalId, setPollingIntervalId] = useState<number | null>(null);
+  const [lastCheckedTime, setLastCheckedTime] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const sortedFiles = useMemo(() => {
@@ -70,14 +72,91 @@ export default function FileStatusComponent() {
     [sortedFiles, selectedFileId]
   );
 
+  const isActiveStatus = (status: FileStatus) => status === 'Processing' || status === 'Uploaded';
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalId !== null) {
+      clearInterval(pollingIntervalId);
+      setPollingIntervalId(null);
+    }
+    setIsPolling(false);
+  }, [pollingIntervalId]);
+
+  const refreshStatus = useCallback(() => {
+    let hasActive = false;
+    let shouldStop = false;
+
+    setFiles((previous) => {
+      const updated = previous.map((file) => {
+        if (file.status === 'Processing') {
+          const nextStatus: FileStatus = 'Processed';
+          return {
+            ...file,
+            status: nextStatus,
+            transactionCount: file.transactionCount ?? 0,
+          };
+        }
+
+        if (file.status === 'Uploaded') {
+          hasActive = true;
+          return { ...file, status: 'Processing', transactionCount: file.transactionCount ?? 0 };
+        }
+
+        return file;
+      });
+
+      hasActive = updated.some((item) => isActiveStatus(item.status));
+      shouldStop = !hasActive;
+      return updated;
+    });
+
+    setLastCheckedTime(new Date().toISOString());
+
+    if (shouldStop) {
+      stopPolling();
+    }
+  }, [stopPolling]);
+
+  const startPolling = useCallback(() => {
+    if (pollingIntervalId !== null) return;
+    const id = window.setInterval(refreshStatus, 3000);
+    setPollingIntervalId(id);
+    setIsPolling(true);
+  }, [pollingIntervalId, refreshStatus]);
+
+  useEffect(() => {
+    const hasActive = files.some((file) => isActiveStatus(file.status));
+    if (hasActive) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+
+    return () => {
+      stopPolling();
+    };
+  }, [files, startPolling, stopPolling]);
+
   const handleSelect = (fileId: string) => {
     setSelectedFileId(fileId);
   };
 
   const handleManualRefresh = () => {
     setError(null);
-    setIsPolling(false);
-    setFiles((existing) => [...existing]);
+    refreshStatus();
+    if (pollingIntervalId === null) {
+      startPolling();
+    }
+  };
+
+  const formatTime = (value: string | null) => {
+    if (!value) return '—';
+    return new Date(value).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
   };
 
   return (
@@ -95,7 +174,7 @@ export default function FileStatusComponent() {
             Atualizar lista
           </button>
           <span className={`polling-indicator ${isPolling ? 'polling-indicator--on' : ''}`}>
-            {isPolling ? 'Polling ativo' : 'Polling inativo'}
+            {isPolling ? 'Polling ativo' : 'Polling inativo'} · Última atualização: {formatTime(lastCheckedTime)}
           </span>
         </div>
       </header>
