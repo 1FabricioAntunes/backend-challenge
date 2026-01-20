@@ -2,21 +2,34 @@
 
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+
+# Build arguments for configuration
+ARG BUILD_CONFIGURATION=Release
+ARG ASPNETCORE_ENVIRONMENT=Production
+
 WORKDIR /src
 
-# Copy project files for restore (preserve layer caching)
+# Copy project files FIRST for layer caching optimization
+# This layer is cached unless project dependencies change
 COPY TransactionProcessor.Domain/TransactionProcessor.Domain.csproj TransactionProcessor.Domain/
 COPY TransactionProcessor.Application/TransactionProcessor.Application.csproj TransactionProcessor.Application/
 COPY TransactionProcessor.Infrastructure/TransactionProcessor.Infrastructure.csproj TransactionProcessor.Infrastructure/
 COPY TransactionProcessor.Api/TransactionProcessor.Api.csproj TransactionProcessor.Api/
 COPY TransactionProcessor.Worker/TransactionProcessor.Worker.csproj TransactionProcessor.Worker/
 
+# Restore dependencies (cached layer)
 RUN dotnet restore TransactionProcessor.Api/TransactionProcessor.Api.csproj
 
-# Copy source and publish
+# Copy source code AFTER restore for better cache hits
 COPY . .
+
+# Build and publish
 WORKDIR /src/TransactionProcessor.Api
-RUN dotnet publish TransactionProcessor.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish TransactionProcessor.Api.csproj \
+    -c ${BUILD_CONFIGURATION} \
+    -o /app/publish \
+    /p:UseAppHost=false \
+    /p:EnvironmentName=${ASPNETCORE_ENVIRONMENT}
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

@@ -4,14 +4,27 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
+# Build arguments
+ARG NODE_ENV=production
 ARG VITE_API_URL=http://localhost:5000
-ENV VITE_API_URL=${VITE_API_URL}
-ENV NODE_ENV=production
 
+WORKDIR /app
+
+# Set environment variables
+ENV NODE_ENV=${NODE_ENV}
+ENV VITE_API_URL=${VITE_API_URL}
+
+# Copy package files FIRST for layer caching optimization
+# This layer is cached unless dependencies change
 COPY package*.json ./
+
+# Install dependencies (cached layer)
 RUN npm ci --only=production --ignore-scripts
 
+# Copy source code AFTER dependency installation
 COPY . .
+
+# Build application
 RUN npm run build
 
 # Runtime stage
