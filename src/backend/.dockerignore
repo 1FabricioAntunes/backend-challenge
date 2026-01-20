@@ -1,0 +1,10 @@
+**/bin
+**/obj
+**/logs
+**/.vs
+**/*.user
+**/*.suo
+**/*.csproj.user
+.git
+.vscode
+Dockerfile
