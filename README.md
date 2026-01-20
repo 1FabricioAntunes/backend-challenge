@@ -14,6 +14,8 @@ This project demonstrates a production-ready backend solution built with modern 
 - Serverless-ready (AWS Lambda)
 - Comprehensive observability and testing
 
+> **Note on Project Scope**: This project is intentionally designed as a demonstration of knowledge that exceeds the minimum requirements of the challenge. While in day-to-day work I prefer simpler solutions that fit the specific needs, here I sought to showcase a broader range of technologies and architectural patterns that could address more demanding production scenarios. The goal is to demonstrate familiarity with modern cloud-native practices, comprehensive testing strategies, and production-ready observability—even if a simpler approach would suffice for the core requirements.
+
 **Tech Stack:**
 
 - **Backend**: .NET 8, ASP.NET Core, FastEndpoints, EF Core, PostgreSQL
