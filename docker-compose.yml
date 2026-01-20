@@ -46,10 +46,13 @@ services:
       - transactionprocessor-network
 
   # LocalStack - AWS services emulation (S3, SQS, Secrets Manager, Cognito)
+  # Note: Only runs in development mode via profile
   localstack:
     image: localstack/localstack:latest
     container_name: localstack
     restart: unless-stopped
+    profiles:
+      - dev-only
     ports:
       - "4566:4566"
     environment:
@@ -127,10 +130,13 @@ services:
       - transactionprocessor-network
 
   # Prometheus - Metrics collection and monitoring
+  # Note: Only runs in development mode via profile
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
+    profiles:
+      - dev-only
     ports:
       - "9090:9090"
     volumes:
@@ -169,10 +175,13 @@ services:
       - transactionprocessor-network
 
   # Grafana - Metrics visualization and dashboarding
+  # Note: Only runs in development mode via profile
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     restart: unless-stopped
+    profiles:
+      - dev-only
     ports:
       - "3001:3000"
     environment:

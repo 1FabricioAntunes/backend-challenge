@@ -1,37 +1,166 @@
 version: '3.8'
 
+# Production overrides for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# For local testing: docker-compose -f docker-compose.yml -f docker-compose.prod.yml --profile dev-only up -d
+
 services:
+  # PostgreSQL Database - Production Configuration
   db:
-    ports: []
+    ports: []  # Don't expose PostgreSQL port externally in production
+    environment:
+      # Use production password from secrets
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      # Persistent data volume for production
+      - postgres-data-prod:/var/lib/postgresql/data
+      # Backup directory (optional)
+      - ./backups/db:/backups:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    # Note: In production, consider using external managed database (AWS RDS, Azure Database)
 
+  # LocalStack - Disabled in production (use real AWS services)
   localstack:
-    profiles: ["dev"]
+    profiles: ["dev-only"]
 
+  # Prometheus - Disabled in production (use external monitoring)
   prometheus:
-    profiles: ["dev"]
+    profiles: ["dev-only"]
 
+  # Grafana - Disabled in production (use external dashboard)
   grafana:
-    profiles: ["dev"]
+    profiles: ["dev-only"]
 
+  # Backend API - Production Configuration
   api:
+    image: transactionprocessor-api:${API_VERSION:-latest}
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5000
-    healthcheck:
-      interval: 20s
-      start_period: 45s
+      # Production database connection
+      # Note: Update to external database URL in production
+      ConnectionStrings__DefaultConnection: ${DB_CONNECTION_STRING:-Host=db;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres}
+      # Real AWS Configuration (replace LocalStack)
+      AWS__Region: ${AWS_REGION:-us-east-1}
+      AWS__S3__BucketName: ${S3_BUCKET_NAME:-transactionprocessor-files-prod}
+      AWS__SQS__QueueUrl: ${SQS_QUEUE_URL:-https://sqs.us-east-1.amazonaws.com/123456789012/cnab-processing}
+      # Serilog Configuration - Production logging levels
+      Serilog__MinimumLevel__Default: Information
+      Serilog__MinimumLevel__Override__Microsoft: Warning
+      Serilog__MinimumLevel__Override__System: Warning
+      Serilog__MinimumLevel__Override__Microsoft.EntityFrameworkCore: Warning
+      # Remove LocalStack URLs (use real AWS endpoints)
+      AWS__S3__ServiceURL: ""
+      AWS__SQS__ServiceURL: ""
+      # Additional production settings
+      AWS__UseLocalStack: "false"
+    volumes:
+      # Production logs directory
+      - ./logs/api:/app/logs
     depends_on:
       db:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 2G
+        reservations:
+          cpus: '2.0'
+          memory: 1G
+      # Deployment configuration for Docker Swarm
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
+  # Frontend - Production Configuration
   frontend:
+    image: transactionprocessor-frontend:${FRONTEND_VERSION:-latest}
     build:
       args:
-        VITE_API_URL: http://localhost:5000
+        VITE_API_URL: ${API_URL:-https://api.transactionprocessor.com}
     environment:
-      VITE_API_URL: http://localhost:5000
+      # Production API URL (update to your domain with HTTPS)
+      VITE_API_URL: ${API_URL:-https://api.transactionprocessor.com}
+    volumes:
+      # Nginx logs
+      - ./logs/frontend:/var/log/nginx
     ports:
       - "3000:3000"
     depends_on:
       api:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Note: In production, use reverse proxy (nginx/traefik) with TLS termination
+
+volumes:
+  postgres-data-prod:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data/postgres}
+
+# Production network with custom subnet
+networks:
+  transactionprocessor-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Production Notes:
+# 1. TLS/HTTPS: Configure reverse proxy (nginx/traefik) with Let's Encrypt certificates
+# 2. Database: Migrate to managed service (AWS RDS, Azure Database for PostgreSQL)
+# 3. AWS Services: Configure real S3 bucket and SQS queue, ensure IAM roles/permissions
+# 4. Monitoring: Use external monitoring (AWS CloudWatch, Datadog, New Relic)
+# 5. Secrets: Use external secret manager (AWS Secrets Manager, HashiCorp Vault)
+# 6. Logging: Configure log aggregation (ELK, Splunk, CloudWatch Logs)
+# 7. Scaling: Consider Kubernetes or ECS for orchestration
+# 8. Backup: Implement automated backup strategy for database
+# 9. CDN: Use CloudFront or similar for frontend static assets
+# 10. Security: Configure WAF, rate limiting, DDoS protection
+
