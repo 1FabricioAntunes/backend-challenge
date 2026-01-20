@@ -53,15 +53,15 @@ services:
   api:
     build:
       context: ./src/backend
-      # Dockerfile will be added later; pointing to API project folder
       dockerfile: TransactionProcessor.Api/Dockerfile
+    image: transactionprocessor-api:local
     container_name: transactionprocessor-api
     restart: unless-stopped
     ports:
-      - "5000:80"
+      - "5000:5000"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:80
+      ASPNETCORE_URLS: http://+:5000
       ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=transactionprocessor;Username=postgres;Password=postgres
       AWS__Region: us-east-1
       AWS__S3__ServiceURL: http://localstack:4566
@@ -71,15 +71,12 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
-    volumes:
-      # Mount backend source for hot reload/dev workflows
-      - ./src/backend:/app
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/swagger >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 30s
     networks:
       - transactionprocessor-network
 
@@ -102,7 +99,8 @@ services:
     environment:
       - TZ=UTC
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -118,7 +116,7 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_SECURITY_ADMIN_USER: admin
@@ -132,7 +130,8 @@ services:
       # Persist Grafana data
       - grafana-data:/var/lib/grafana
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -146,20 +145,21 @@ services:
   frontend:
     build:
       context: ./src/frontend
-      # Dockerfile to be created later
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5000
+    image: transactionprocessor-frontend:local
     container_name: transactionprocessor-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      VITE_API_BASE_URL: http://localhost:5000
       VITE_API_URL: http://localhost:5000
-    volumes:
-      # Mount frontend source for hot reload
-      - ./src/frontend:/app
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
