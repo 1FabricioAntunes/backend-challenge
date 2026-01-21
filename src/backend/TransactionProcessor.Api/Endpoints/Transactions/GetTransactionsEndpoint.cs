@@ -40,9 +40,12 @@ public class GetTransactionsEndpoint : Endpoint<TransactionsQueryRequest, PagedR
     public override void Configure()
     {
         Get("/api/transactions/v1");
-        Description(b => b.Produces(200)
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
+        Description(b => b
+            .Produces(200)
             .Produces<ApiErrorResponse>(400)
-            .Produces<ApiErrorResponse>(404));
+            .Produces<ApiErrorResponse>(404)
+            .WithTags("Transactions"));
     }
 
     public override async Task HandleAsync(TransactionsQueryRequest req, CancellationToken ct)

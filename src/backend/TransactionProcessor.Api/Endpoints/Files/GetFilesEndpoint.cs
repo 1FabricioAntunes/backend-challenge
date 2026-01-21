@@ -42,6 +42,7 @@ public class GetFilesEndpoint : Endpoint<GetFilesRequest, PagedResult<FileDto>>
     public override void Configure()
     {
         Get("/api/files/v1");
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
         Description(d => d
             .Produces<PagedResult<FileDto>>(200, "application/json")
             .Produces<ApiErrorResponse>(400, "application/json")

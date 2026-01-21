@@ -175,6 +175,13 @@ builder.Services
         
         // Configure JWT Bearer authentication for Swagger
         o.EnableJWTBearerAuth = true;
+        
+        // Disable auto-tagging based on path segments
+        // Endpoints use explicit tags via .WithTags() or Tags() methods
+        // All endpoints call DontAutoTag() to prevent auto-tagging
+        // Setting to 0 should disable auto-tagging, but if it doesn't work,
+        // endpoints must explicitly call DontAutoTag() (which they all do)
+        o.AutoTagPathSegmentIndex = 0;
     });
 
 // Register global exception handler

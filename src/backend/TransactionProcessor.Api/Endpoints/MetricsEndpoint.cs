@@ -14,7 +14,7 @@ public class MetricsEndpoint : EndpointWithoutRequest
     {
         Get("/api/metrics");
         AllowAnonymous();  // Metrics endpoint should not require authentication
-        Tags("Observability");
+        Tags("Observability"); // Set explicit tag
         Summary(s => s.Summary = "Prometheus metrics endpoint");
         Description(d => d.WithDescription("Returns metrics in Prometheus text format for scraping"));
     }
@@ -41,7 +41,7 @@ public class HealthCheckEndpoint : EndpointWithoutRequest<HealthCheckResponse>
     {
         Get("/api/health");
         AllowAnonymous();
-        Tags("Observability");
+        Tags("Observability"); // Set explicit tag
         Summary(s => s.Summary = "Health check endpoint");
         Description(d => d.WithDescription("Returns application health status"));
     }
