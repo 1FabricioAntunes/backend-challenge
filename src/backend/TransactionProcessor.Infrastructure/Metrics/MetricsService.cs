@@ -91,7 +91,7 @@ public class MetricsService
             help: "Duration of HTTP requests in seconds",
             new HistogramConfiguration
             {
-                LabelNames = new[] { "method", "endpoint" },
+                LabelNames = new[] { "method", "endpoint", "status_code" },
                 Buckets = new double[] { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0 }
             });
 
