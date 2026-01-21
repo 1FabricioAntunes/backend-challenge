@@ -39,7 +39,7 @@ services:
   # LocalStack - AWS services emulation (S3, SQS, Secrets Manager, Cognito)
   # Note: Only runs in development mode via profile
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:3.0
     container_name: localstack
     restart: unless-stopped
     profiles:
@@ -50,6 +50,8 @@ services:
       - SERVICES=s3,sqs,secretsmanager,cognito-idp
       - AWS_DEFAULT_REGION=us-east-1
       - DEBUG=1
+      - LOCALSTACK_AUTH_TOKEN=
+      - PERSISTENCE=1
     volumes:
       - localstack-data:/var/lib/localstack
       # Auto-run init scripts when LocalStack is ready
