@@ -274,6 +274,50 @@ export const authApi = {
       return config;
     });
 
+    // Add response interceptor to extract API error messages
+    loginClient.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => {
+        // Extract error message from API response (matches backend ErrorResponse format)
+        // Backend returns: { error: { message: "...", code: "...", statusCode: 401 } }
+        const responseData = error.response?.data as any;
+        
+        // Check for structured error response from API
+        if (responseData && typeof responseData === 'object') {
+          if (responseData.error?.message) {
+            // API returned structured error - use the message from API
+            const apiError = new Error(responseData.error.message);
+            (apiError as any).code = responseData.error.code || 'API_ERROR';
+            (apiError as any).statusCode = responseData.error.statusCode || error.response?.status;
+            return Promise.reject(apiError);
+          }
+          
+          // Check if message is at root level (alternative format)
+          if (responseData.message) {
+            const apiError = new Error(responseData.message);
+            (apiError as any).code = responseData.code || 'API_ERROR';
+            (apiError as any).statusCode = error.response?.status;
+            return Promise.reject(apiError);
+          }
+        }
+        
+        // Fallback: For 401 errors, provide user-friendly message
+        if (error.response?.status === 401) {
+          const apiError = new Error('Invalid email or password.');
+          (apiError as any).code = 'AUTHENTICATION_FAILED';
+          (apiError as any).statusCode = 401;
+          return Promise.reject(apiError);
+        }
+        
+        // For other errors, provide generic message (never show raw Axios error)
+        const errorMessage = 'An error occurred during login. Please try again.';
+        const apiError = new Error(errorMessage);
+        (apiError as any).code = 'NETWORK_ERROR';
+        (apiError as any).statusCode = error.response?.status;
+        return Promise.reject(apiError);
+      }
+    );
+
     const response = await loginClient.post<{ user: { name: string; email: string }; token: string }>(
       '/api/auth/v1/login',
       { email, password }

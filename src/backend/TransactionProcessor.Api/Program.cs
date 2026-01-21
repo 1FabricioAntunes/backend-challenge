@@ -273,7 +273,8 @@ builder.Services.AddAuthentication(options =>
     {
         // Skip metadata endpoint for mock authentication
         options.Authority = "mock-issuer";
-        options.MetadataAddress = null; // Don't fetch metadata
+        // Don't set MetadataAddress - let it use default behavior
+        // MetadataAddress is not needed for mock authentication
     }
     else
     {

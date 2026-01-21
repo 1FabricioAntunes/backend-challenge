@@ -125,12 +125,26 @@ export default function LoginComponent() {
       // Success - AuthContext will handle state update
       // No need to redirect, App.tsx will handle showing main content
     } catch (err: unknown) {
-      // Handle error
-      if (err && typeof err === 'object' && 'message' in err) {
-        setError(String(err.message));
-      } else {
-        setError('Login failed. Please check your credentials and try again.');
+      // Handle error - extract message from API response or use default
+      let errorMessage = 'Login failed. Please check your credentials and try again.';
+      
+      if (err instanceof Error) {
+        // Error object from interceptor - use its message
+        errorMessage = err.message;
+      } else if (err && typeof err === 'object' && 'message' in err) {
+        // Error-like object with message property
+        errorMessage = String(err.message);
+      } else if (typeof err === 'string') {
+        // String error
+        errorMessage = err;
       }
+      
+      // Ensure we have a meaningful message
+      if (!errorMessage || errorMessage.includes('status code')) {
+        errorMessage = 'Invalid email or password.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

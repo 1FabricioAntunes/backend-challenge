@@ -66,6 +66,9 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
         {
             _logger.LogInformation("[{CorrelationId}] Login attempt for email: {Email}", req.CorrelationId, req.Email);
 
+            // Get environment once at the start to avoid variable name conflicts
+            var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
+
             try
             {
                 // Always try Cognito first - preserve the Cognito call
@@ -87,7 +90,6 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
                 // If user pool ID is still not found, check if we can fall back to mock service
                 if (string.IsNullOrEmpty(userPoolId))
                 {
-                    var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
                     if (environment == "Development" && _mockCognitoService != null)
                     {
                         _logger.LogWarning("[{CorrelationId}] User pool ID not found - LocalStack Cognito unavailable. Falling back to mock Cognito service.", req.CorrelationId);
@@ -205,7 +207,6 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
                 };
                 
                 // Add debug info in development mode
-                var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
                 if (environment == "Development")
                 {
                     response.AuthMethod = "AWS Cognito";
@@ -264,7 +265,6 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
                 // LocalStack Cognito not available - log error and provide helpful message
                 _logger.LogWarning("[{CorrelationId}] LocalStack Cognito service not available: {Message}. Using mock Cognito service instead.", req.CorrelationId, ex.Message);
                 
-                var environment = _configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
                 if (environment == "Development" && _mockCognitoService != null)
                 {
                     _logger.LogInformation("[{CorrelationId}] Authenticating with Mock Cognito Service (LocalStack Cognito unavailable)", req.CorrelationId);
