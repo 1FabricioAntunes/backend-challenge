@@ -5,8 +5,8 @@ using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using NSwag;
 using Serilog;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using TransactionProcessor.Api.Exceptions;
@@ -21,6 +21,7 @@ using TransactionProcessor.Application.Services;
 using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Domain.Repositories;
 using TransactionProcessor.Domain.Services;
+using TransactionProcessor.Infrastructure.Authentication;
 using TransactionProcessor.Infrastructure.Messaging;
 using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
@@ -133,6 +134,15 @@ builder.Services.AddScoped<ICNABValidator, CNABValidator>();
 builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
 builder.Services.AddScoped<IMessageQueueService, SQSMessageQueueService>();
 
+// Register mock Cognito service for development (when LocalStack Cognito unavailable)
+var isDevelopment = builder.Environment.IsDevelopment();
+var serviceUrl = builder.Configuration["AWS:SecretsManager:ServiceUrl"];
+if (isDevelopment && !string.IsNullOrEmpty(serviceUrl))
+{
+    builder.Services.AddSingleton<MockCognitoService>();
+    Log.Information("Mock Cognito service registered for development (fallback when LocalStack Cognito unavailable)");
+}
+
 // Register MediatR for query/command handling
 builder.Services.AddMediatR(config =>
     config.RegisterServicesFromAssemblyContaining<GetFilesQuery>());
@@ -149,12 +159,61 @@ Log.Information("Prometheus metrics initialized");
 // ============================================================================
 // FASTENDPOINTS CONFIGURATION
 // ============================================================================
-// Register FastEndpoints services
-builder.Services.AddFastEndpoints();
+// Register FastEndpoints services and Swagger documentation
+builder.Services
+    .AddFastEndpoints()
+    .SwaggerDocument(o =>
+    {
+        o.DocumentSettings = s =>
+        {
+            s.Title = "TransactionProcessor API";
+            s.Version = "v1";
+            s.Description = "CNAB file processing and transaction management API";
+        };
+        
+        // Configure JWT Bearer authentication for Swagger
+        o.EnableJWTBearerAuth = true;
+    });
 
 // Register global exception handler
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+
+// ============================================================================
+// CORS CONFIGURATION
+// ============================================================================
+// Configure CORS from appsettings
+var corsConfig = builder.Configuration.GetSection("CORS");
+var allowedOrigins = corsConfig.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var allowHeaders = corsConfig.GetSection("AllowHeaders").Get<string[]>() ?? new[] { "*" };
+var allowMethods = corsConfig.GetSection("AllowMethods").Get<string[]>() ?? new[] { "GET", "POST", "PUT", "DELETE", "OPTIONS" };
+var allowCredentials = corsConfig.GetValue<bool>("AllowCredentials", false);
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins);
+        }
+        else
+        {
+            // If no origins specified, allow all (development only)
+            policy.AllowAnyOrigin();
+        }
+        
+        policy.WithHeaders(allowHeaders);
+        policy.WithMethods(allowMethods);
+        
+        if (allowCredentials && allowedOrigins.Length > 0)
+        {
+            policy.AllowCredentials();
+        }
+    });
+});
+
+Log.Information("CORS configured with {OriginCount} allowed origin(s)", allowedOrigins.Length);
 
 // ============================================================================
 // JSON SERIALIZATION CONFIGURATION
@@ -205,7 +264,21 @@ builder.Services.AddAuthentication(options =>
     // OAuth2 authority (token issuer)
     // LocalStack: http://localhost:4566
     // AWS Cognito: https://cognito-idp.{region}.amazonaws.com/{userPoolId}
-    options.Authority = authOptions.Authority;
+    // For mock auth in development, set to mock-issuer to avoid metadata fetch
+    var isDevelopment = builder.Environment.IsDevelopment();
+    var serviceUrl = builder.Configuration["AWS:SecretsManager:ServiceUrl"];
+    var useMockAuth = isDevelopment && !string.IsNullOrEmpty(serviceUrl);
+    
+    if (useMockAuth)
+    {
+        // Skip metadata endpoint for mock authentication
+        options.Authority = "mock-issuer";
+        options.MetadataAddress = null; // Don't fetch metadata
+    }
+    else
+    {
+        options.Authority = authOptions.Authority;
+    }
     
     // Audience validation ('aud' claim in JWT)
     // OWASP A01: Broken Access Control prevention
@@ -215,23 +288,27 @@ builder.Services.AddAuthentication(options =>
     // Production: true (HTTPS enforcement for OIDC metadata)
     // LocalStack: false (HTTP only in local development)
     // OWASP A02: Cryptographic Failures mitigation
-    options.RequireHttpsMetadata = authOptions.RequireHttpsMetadata;
+    options.RequireHttpsMetadata = useMockAuth ? false : authOptions.RequireHttpsMetadata;
     
     // Save token in AuthenticationProperties for later use
     options.SaveToken = true;
     
     // Token validation parameters
     // Reference: technical-decisions.md JWT Security Considerations
+    
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        // ✅ Validate token signature using RS256
+        // ✅ Validate token signature using RS256 (skip for mock tokens in development)
         // CVE-2015-9235: Algorithm confusion attack prevention
-        ValidateIssuerSigningKey = authOptions.ValidateIssuerSigningKey,
+        ValidateIssuerSigningKey = useMockAuth ? false : authOptions.ValidateIssuerSigningKey,
         
         // ✅ Validate issuer ('iss' claim)
         // JWT Security: Prevent token substitution attacks
+        // In development with mock auth, accept both real issuer and mock-issuer
         ValidateIssuer = authOptions.ValidateIssuer,
-        ValidIssuer = authOptions.Authority,
+        ValidIssuers = useMockAuth 
+            ? new[] { authOptions.Authority, "mock-issuer" }
+            : new[] { authOptions.Authority },
         
         // ✅ Validate audience ('aud' claim)
         // OWASP A01: Prevent token reuse across APIs
@@ -250,13 +327,20 @@ builder.Services.AddAuthentication(options =>
         // JWT Security: All tokens must have expiration
         RequireExpirationTime = true,
         
-        // ✅ Require signed tokens (reject alg: none)
+        // ✅ Require signed tokens (skip for mock tokens in development)
         // CVE-2015-9235: Algorithm confusion attack prevention
-        RequireSignedTokens = true,
+        RequireSignedTokens = !useMockAuth,
         
-        // ✅ Valid algorithms: RS256 only
+        // ✅ Valid algorithms: RS256 only (or HS256 for mock tokens in development)
         // JWT Security: Prevent weak algorithm attacks
-        ValidAlgorithms = new[] { SecurityAlgorithms.RsaSha256 }
+        ValidAlgorithms = useMockAuth
+            ? new[] { SecurityAlgorithms.RsaSha256, SecurityAlgorithms.HmacSha256 }
+            : new[] { SecurityAlgorithms.RsaSha256 },
+        
+        // For mock tokens in development, use a simple symmetric key
+        IssuerSigningKey = useMockAuth
+            ? new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes("mock-signing-key-for-development-only-not-secure"))
+            : null
     };
     
     // Event handlers for authentication lifecycle
@@ -301,25 +385,18 @@ Log.Information("[{CorrelationId}] Authentication configured: Authority={Authori
 // ============================================================================
 // SWAGGER/OPENAPI DOCUMENTATION
 // ============================================================================
-// Register API Explorer (required for NSwag/OpenAPI)
-builder.Services.AddEndpointsApiExplorer();
-
-// Configure NSwag for OpenAPI documentation
-builder.Services.AddOpenApiDocument(settings =>
+// Configure FastEndpoints Swagger (automatically discovers all FastEndpoints)
+builder.Services.SwaggerDocument(o =>
 {
-    settings.Title = "TransactionProcessor API";
-    settings.Version = "v1";
-    settings.Description = "CNAB file processing and transaction management API";
-    
-    // Add OAuth2 authentication documentation
-    settings.AddAuth("Bearer", new OpenApiSecurityScheme
+    o.DocumentSettings = s =>
     {
-        Type = OpenApiSecuritySchemeType.Http,
-        Scheme = "Bearer",
-        Description = "JWT Bearer token authentication",
-        Name = "Authorization",
-        In = OpenApiSecurityApiKeyLocation.Header
-    });
+        s.Title = "TransactionProcessor API";
+        s.Version = "v1";
+        s.Description = "CNAB file processing and transaction management API";
+    };
+    
+    // Configure JWT Bearer authentication for Swagger
+    o.EnableJWTBearerAuth = true;
 });
 
 var app = builder.Build();
@@ -333,6 +410,9 @@ app.UseExceptionHandler();
 
 // Add correlation ID middleware (must be early in pipeline)
 app.UseCorrelationId();
+
+// Add CORS middleware (must be before authentication and authorization)
+app.UseCors();
 
 // Add security headers middleware
 app.UseSecurityHeaders();
@@ -381,28 +461,15 @@ else
 }
 
 // ============================================================================
-// SWAGGER/OPENAPI DOCUMENTATION
-// ============================================================================
-// Enable Swagger UI and OpenAPI specification in all environments
-app.UseOpenApi();
-app.UseSwaggerUi(settings =>
-{
-    settings.Path = "/swagger";
-    settings.DocumentTitle = "TransactionProcessor API Documentation";
-});
-
-Log.Information("Swagger UI available at /swagger");
-Log.Information("OpenAPI specification available at /swagger/v1.json");
-
-// ============================================================================
 // FASTENDPOINTS MIDDLEWARE
 // ============================================================================
 // Register FastEndpoints middleware (must be after exception handler)
-app.UseFastEndpoints(config =>
-{
-    // Configure FastEndpoints routing with api prefix
-    config.Endpoints.RoutePrefix = "api";
-});
+// UseSwaggerGen must come AFTER UseFastEndpoints to discover endpoints
+app.UseFastEndpoints()
+.UseSwaggerGen(); // Enable Swagger UI after FastEndpoints
+
+Log.Information("Swagger UI available at /swagger");
+Log.Information("OpenAPI specification available at /swagger/v1.json");
 
 // ============================================================================
 // APPLICATION STARTUP
