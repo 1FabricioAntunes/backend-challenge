@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Infrastructure.Metrics;
+using TransactionProcessor.Infrastructure.Secrets;
 
 namespace TransactionProcessor.Infrastructure.Messaging;
 
@@ -29,21 +30,30 @@ public class SQSMessageQueueService : IMessageQueueService
     /// Initializes a new instance of the SQSMessageQueueService.
     /// </summary>
     /// <param name="sqsClient">The SQS client for AWS operations.</param>
-    /// <param name="configuration">Configuration provider for queue URLs and endpoints.</param>
+    /// <param name="configuration">Configuration provider for queue URLs and endpoints (fallback).</param>
+    /// <param name="sqsSecrets">SQS secrets loaded from Secrets Manager (primary source).</param>
     /// <param name="logger">Logger for operation tracking.</param>
     /// <exception cref="ArgumentNullException">Thrown when required parameters are null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when required configuration keys are missing.</exception>
-    public SQSMessageQueueService(IAmazonSQS sqsClient, IConfiguration configuration, ILogger<SQSMessageQueueService> logger)
+    public SQSMessageQueueService(
+        IAmazonSQS sqsClient, 
+        IConfiguration configuration,
+        TransactionProcessor.Infrastructure.Secrets.AwsSqsSecrets? sqsSecrets,
+        ILogger<SQSMessageQueueService> logger)
     {
         _sqsClient = sqsClient ?? throw new ArgumentNullException(nameof(sqsClient));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _queueUrl = _configuration["AWS:SQS:QueueUrl"]
+        // Prefer secrets from Secrets Manager, fallback to configuration
+        _queueUrl = sqsSecrets?.QueueUrl 
+            ?? _configuration["AWS:SQS:QueueUrl"]
             ?? throw new InvalidOperationException("AWS:SQS:QueueUrl configuration is required");
 
-        _dlqUrl = _configuration["AWS:SQS:DLQUrl"]
-            ?? throw new InvalidOperationException("AWS:SQS:DLQUrl configuration is required");
+        _dlqUrl = sqsSecrets?.DlqUrl 
+            ?? _configuration["AWS:SQS:DlqUrl"] 
+            ?? _configuration["AWS:SQS:DLQUrl"]  // Support both spellings
+            ?? throw new InvalidOperationException("AWS:SQS:DlqUrl configuration is required");
 
         _retryPolicy = BuildRetryPolicy();
     }
