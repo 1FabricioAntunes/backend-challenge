@@ -24,7 +24,8 @@ public class SecurityHeadersMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         // Add security headers to response
-        AddSecurityHeaders(context.Response);
+        // CSP is customized in AddSecurityHeaders to allow Swagger UI to function
+        AddSecurityHeaders(context, context.Response);
 
         await _next(context);
     }
@@ -42,7 +43,7 @@ public class SecurityHeadersMiddleware
     /// - Referrer-Policy: Controls referrer information
     /// - Permissions-Policy: Controls browser features
     /// </remarks>
-    private void AddSecurityHeaders(HttpResponse response)
+    private void AddSecurityHeaders(HttpContext context, HttpResponse response)
     {
         // HTTPS enforcement with HSTS
         // max-age=31536000 (1 year), include subdomains, preload list
@@ -62,16 +63,39 @@ public class SecurityHeadersMiddleware
         // Content Security Policy (CSP) - Prevent injection attacks
         // OWASP A03 (Injection), A07 (Identification and Authentication Failures)
         // Restrictive policy: only allow resources from same origin
-        response.Headers.Append("Content-Security-Policy",
-            "default-src 'self'; " +
-            "script-src 'self'; " +
-            "style-src 'self'; " +
-            "img-src 'self' data: https:; " +
-            "font-src 'self'; " +
-            "connect-src 'self'; " +
-            "frame-ancestors 'none'; " +
-            "base-uri 'self'; " +
-            "form-action 'self'");
+        // Note: 'unsafe-inline' is required for Swagger UI which uses inline scripts
+        // This is acceptable for Swagger UI as it's a development/documentation tool
+        var path = context.Request.Path.Value ?? string.Empty;
+        var isSwaggerPath = path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
+        
+        if (isSwaggerPath)
+        {
+            // More permissive CSP for Swagger UI to allow inline scripts
+            response.Headers.Append("Content-Security-Policy",
+                "default-src 'self'; " +
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data: https:; " +
+                "font-src 'self'; " +
+                "connect-src 'self'; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "form-action 'self'");
+        }
+        else
+        {
+            // Restrictive CSP for API endpoints
+            response.Headers.Append("Content-Security-Policy",
+                "default-src 'self'; " +
+                "script-src 'self'; " +
+                "style-src 'self'; " +
+                "img-src 'self' data: https:; " +
+                "font-src 'self'; " +
+                "connect-src 'self'; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "form-action 'self'");
+        }
 
         // Referrer Policy - Control referrer information
         response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");

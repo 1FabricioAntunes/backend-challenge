@@ -52,6 +52,7 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
     {
         Post("/api/auth/v1/login");
         AllowAnonymous(); // Login endpoint must be accessible without authentication
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
         Description(d => d
             .WithTags("Authentication")
             .Produces<LoginResponse>(200, "application/json")

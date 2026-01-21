@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace TransactionProcessor.Domain.Services;
@@ -157,6 +158,7 @@ public class FileValidator : IFileValidator
         fileStream.Seek(0, SeekOrigin.Begin);
 
         // Step 3: Validate file content line by line
+        // Read as UTF-8 first to handle files with accented characters, then normalize to ASCII
         var reader = new StreamReader(fileStream, Encoding.UTF8);
         int lineNumber = 0;
 
@@ -166,7 +168,10 @@ public class FileValidator : IFileValidator
             while ((line = await reader.ReadLineAsync()) != null)
             {
                 lineNumber++;
-                ValidateLine(line, lineNumber, errors);
+                // Normalize UTF-8 accented characters to ASCII (e.g., "JOÃO" -> "JOAO")
+                // This handles files that were saved with UTF-8 encoding but should be ASCII
+                string normalizedLine = NormalizeToAscii(line);
+                ValidateLine(normalizedLine, lineNumber, errors);
             }
         }
         catch (IOException ex)
@@ -193,14 +198,16 @@ public class FileValidator : IFileValidator
     /// Validate a single line from the CNAB file.
     /// 
     /// Checks:
-    /// 1. Byte length is exactly 80 (CNAB specification)
+    /// 1. Byte length is exactly 80 (CNAB specification) - after ASCII normalization
     /// 2. All bytes are valid ASCII (0-127)
+    /// 
+    /// Note: The line should already be normalized to ASCII before calling this method.
     /// 
     /// Validation is non-destructive - errors are added to the list
     /// without throwing exceptions, allowing all lines to be validated.
     /// 
     /// </summary>
-    /// <param name="line">Line content to validate</param>
+    /// <param name="line">Line content to validate (should be ASCII-normalized)</param>
     /// <param name="lineNumber">1-based line number for error reporting</param>
     /// <param name="errors">List to accumulate validation errors</param>
     private void ValidateLine(string line, int lineNumber, List<string> errors)
@@ -211,8 +218,8 @@ public class FileValidator : IFileValidator
             return;
         }
 
-        // Get byte length using UTF-8 encoding to match actual transmitted data
-        byte[] lineBytes = Encoding.UTF8.GetBytes(line);
+        // Get byte length using ASCII encoding (after normalization, should be single-byte)
+        byte[] lineBytes = Encoding.ASCII.GetBytes(line);
         int byteLength = lineBytes.Length;
 
         // Check line length
@@ -237,5 +244,45 @@ public class FileValidator : IFileValidator
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Normalize UTF-8 string to ASCII by removing diacritics from accented characters.
+    /// Example: "JOÃO" -> "JOAO", "São Paulo" -> "Sao Paulo"
+    /// This allows files with UTF-8 encoded accented characters to be processed as ASCII.
+    /// </summary>
+    /// <param name="input">Input string that may contain UTF-8 accented characters</param>
+    /// <returns>ASCII-normalized string</returns>
+    private static string NormalizeToAscii(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Normalize to NFD (decomposed form) which separates base characters from diacritics
+        // Then remove diacritics and convert to ASCII
+        var normalized = input.Normalize(System.Text.NormalizationForm.FormD);
+        var stringBuilder = new System.Text.StringBuilder();
+
+        foreach (var c in normalized)
+        {
+            var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+            // Keep only base characters (not combining marks/diacritics)
+            if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+            {
+                // Convert to ASCII - characters <= 127 are already ASCII
+                if (c <= 127)
+                {
+                    stringBuilder.Append(c);
+                }
+                else
+                {
+                    // For characters outside ASCII after normalization, replace with space
+                    // This handles any remaining special characters
+                    stringBuilder.Append(' ');
+                }
+            }
+        }
+
+        return stringBuilder.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 }

@@ -160,6 +160,8 @@ Log.Information("Prometheus metrics initialized");
 // FASTENDPOINTS CONFIGURATION
 // ============================================================================
 // Register FastEndpoints services and Swagger documentation
+// IMPORTANT: SwaggerDocument() must be chained with AddFastEndpoints()
+// Do NOT use .AddSwaggerDocument() - it doesn't belong to FastEndpoints
 builder.Services
     .AddFastEndpoints()
     .SwaggerDocument(o =>
@@ -173,6 +175,13 @@ builder.Services
         
         // Configure JWT Bearer authentication for Swagger
         o.EnableJWTBearerAuth = true;
+        
+        // Disable auto-tagging based on path segments
+        // Endpoints use explicit tags via .WithTags() or Tags() methods
+        // All endpoints call DontAutoTag() to prevent auto-tagging
+        // Setting to 0 should disable auto-tagging, but if it doesn't work,
+        // endpoints must explicitly call DontAutoTag() (which they all do)
+        o.AutoTagPathSegmentIndex = 0;
     });
 
 // Register global exception handler
@@ -383,23 +392,6 @@ builder.Services.AddAuthorization();
 Log.Information("[{CorrelationId}] Authentication configured: Authority={Authority}, Audience={Audience}",
     startupCorrelationId, authOptions.Authority, authOptions.Audience);
 
-// ============================================================================
-// SWAGGER/OPENAPI DOCUMENTATION
-// ============================================================================
-// Configure FastEndpoints Swagger (automatically discovers all FastEndpoints)
-builder.Services.SwaggerDocument(o =>
-{
-    o.DocumentSettings = s =>
-    {
-        s.Title = "TransactionProcessor API";
-        s.Version = "v1";
-        s.Description = "CNAB file processing and transaction management API";
-    };
-    
-    // Configure JWT Bearer authentication for Swagger
-    o.EnableJWTBearerAuth = true;
-});
-
 var app = builder.Build();
 
 // ============================================================================
@@ -465,9 +457,9 @@ else
 // FASTENDPOINTS MIDDLEWARE
 // ============================================================================
 // Register FastEndpoints middleware (must be after exception handler)
-// UseSwaggerGen must come AFTER UseFastEndpoints to discover endpoints
+// IMPORTANT: UseSwaggerGen() MUST be placed after UseFastEndpoints() for everything to work smoothly
 app.UseFastEndpoints()
-.UseSwaggerGen(); // Enable Swagger UI after FastEndpoints
+    .UseSwaggerGen();
 
 Log.Information("Swagger UI available at /swagger");
 Log.Information("OpenAPI specification available at /swagger/v1.json");

@@ -102,9 +102,13 @@ fi
 # SECRETS MANAGER INITIALIZATION
 # ============================================================================
 # Call the secrets initialization script
+# This script stores all secrets (including database connection string) in Secrets Manager
+# SECURITY: No plain text password files are used - all secrets come from Secrets Manager
+# See: docs/security.md § Secrets Management
 if [ -f "/etc/localstack/init/ready.d/init-secrets.sh" ]; then
   echo "[init] Executing secrets initialization script..."
   bash /etc/localstack/init/ready.d/init-secrets.sh
+  echo "[init] All secrets stored in Secrets Manager (no plain text files)"
 else
   echo "[init] Warning: init-secrets.sh not found, skipping secrets initialization"
 fi

@@ -100,8 +100,110 @@ public class SecretsManagerService
                 secretId,
                 correlationId);
 
-            return JsonSerializer.Deserialize<T>(secretValue)
-                ?? throw new InvalidOperationException($"Failed to deserialize secret: {secretId}");
+            // Try to deserialize as JSON first
+            try
+            {
+                return JsonSerializer.Deserialize<T>(secretValue)
+                    ?? throw new InvalidOperationException($"Failed to deserialize secret: {secretId}");
+            }
+            catch (JsonException)
+            {
+                // If deserialization fails, the secret might be a plain string
+                // This is common for connection strings stored as plain text
+                // The caller should handle this case (e.g., using createFromString in LoadSecretWithFallbackAsync)
+                _logger.LogDebug(
+                    "Secret is not valid JSON, treating as plain string. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                    secretId,
+                    correlationId);
+                throw new InvalidOperationException(
+                    $"Secret '{secretId}' is stored as plain text, not JSON. " +
+                    $"Use GetSecretStringAsync() or handle as string in fallback logic.");
+            }
+        }
+        catch (ResourceNotFoundException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Secret not found in Secrets Manager. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                secretId,
+                correlationId);
+
+            throw new InvalidOperationException(
+                $"Secret '{secretId}' not found. Ensure the secret is created in AWS Secrets Manager.",
+                ex);
+        }
+        catch (AmazonSecretsManagerException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to retrieve secret from Secrets Manager. SecretId={SecretId}, CorrelationId={CorrelationId}, Error={Error}",
+                secretId,
+                correlationId,
+                ex.Message);
+
+            throw new InvalidOperationException(
+                $"Failed to retrieve secret '{secretId}': {ex.Message}",
+                ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Unexpected error retrieving secret. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                secretId,
+                correlationId);
+
+            throw new InvalidOperationException(
+                $"Unexpected error retrieving secret '{secretId}': {ex.Message}",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Retrieves a secret as a plain string (for connection strings and other non-JSON secrets).
+    /// Secrets are cached in memory for performance.
+    /// </summary>
+    /// <param name="secretId">Secret identifier (hierarchical naming: AppName/Component/Secret)</param>
+    /// <param name="correlationId">Correlation ID for logging and tracing</param>
+    /// <returns>Secret value as string</returns>
+    /// <exception cref="InvalidOperationException">Thrown when secret retrieval fails</exception>
+    public async Task<string> GetSecretStringAsync(string secretId, string? correlationId = null)
+    {
+        if (string.IsNullOrEmpty(secretId))
+        {
+            throw new ArgumentException("Secret ID cannot be null or empty", nameof(secretId));
+        }
+
+        // Check cache first
+        if (_secretCache.TryGetValue(secretId, out var cachedSecret))
+        {
+            _logger.LogDebug(
+                "Secret retrieved from cache. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                secretId,
+                correlationId);
+            return cachedSecret;
+        }
+
+        try
+        {
+            _logger.LogInformation(
+                "Retrieving secret from Secrets Manager. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                secretId,
+                correlationId);
+
+            var request = new GetSecretValueRequest { SecretId = secretId };
+            var response = await _client.GetSecretValueAsync(request);
+
+            // Cache the secret
+            var secretValue = response.SecretString;
+            _secretCache.AddOrUpdate(secretId, secretValue, (_, _) => secretValue);
+
+            _logger.LogInformation(
+                "Secret retrieved and cached successfully. SecretId={SecretId}, CorrelationId={CorrelationId}",
+                secretId,
+                correlationId);
+
+            return secretValue;
         }
         catch (ResourceNotFoundException ex)
         {

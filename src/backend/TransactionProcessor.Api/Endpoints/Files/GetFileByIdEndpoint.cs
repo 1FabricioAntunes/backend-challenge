@@ -37,6 +37,7 @@ public class GetFileByIdEndpoint : Endpoint<GetFileByIdRequest, FileDto>
     public override void Configure()
     {
         Get("/api/files/v1/{id}");
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
         Description(d => d
             .Produces<FileDto>(200, "application/json")
             .Produces<ApiErrorResponse>(404, "application/json")
