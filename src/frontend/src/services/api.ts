@@ -6,6 +6,26 @@ const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 /**
+ * SECURITY NOTE: Token Storage in localStorage
+ * 
+ * ⚠️ XSS Vulnerability: Tokens stored in localStorage are accessible to JavaScript,
+ * making them vulnerable to Cross-Site Scripting (XSS) attacks.
+ * 
+ * Current Implementation (Development/Demo):
+ * - Tokens retrieved from localStorage and injected into Authorization header
+ * - Suitable for development and demo purposes
+ * 
+ * Production Recommendation (per docs/security.md):
+ * - Use HttpOnly cookies for token storage (prevents JavaScript access)
+ * - Browser automatically sends cookies with requests
+ * - No need to manually inject Authorization header
+ * - Backend must set cookies with HttpOnly, Secure, and SameSite flags
+ * 
+ * See: docs/security.md - "Insecure Token Storage" section
+ * See: technical-decisions.md - "JWT Security Considerations" section
+ */
+
+/**
  * Generate a unique correlation ID for request tracking
  * Format: timestamp-random
  */
@@ -219,6 +239,55 @@ export const storeApi = {
   getStore: async (storeCode: string): Promise<any> => {
     const response = await apiClient.get(`/api/stores/v1/${storeCode}`);
     return response.data;
+  },
+};
+
+/**
+ * Authentication API endpoints
+ * 
+ * Note: For development/demo, this uses a simple login endpoint.
+ * In production with OAuth2/Cognito, the flow would redirect to Cognito
+ * for authentication and receive tokens via OAuth2 callback.
+ */
+export const authApi = {
+  /**
+   * Login with email and password
+   * POST /api/auth/v1/login
+   * 
+   * @param email - User email address
+   * @param password - User password
+   * @returns Promise with user info and JWT token
+   */
+  login: async (email: string, password: string): Promise<{ user: { name: string; email: string }; token: string }> => {
+    // Use a separate axios instance without auth interceptor for login
+    const loginClient = axios.create({
+      baseURL: import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
+    });
+
+    // Add correlation ID to login request
+    loginClient.interceptors.request.use((config) => {
+      config.headers['X-Correlation-ID'] = generateCorrelationId();
+      return config;
+    });
+
+    const response = await loginClient.post<{ user: { name: string; email: string }; token: string }>(
+      '/api/auth/v1/login',
+      { email, password }
+    );
+    return response.data;
+  },
+
+  /**
+   * Logout (client-side only, clears token)
+   * In production, might call backend to invalidate token
+   */
+  logout: async (): Promise<void> => {
+    // Client-side logout handled by AuthContext
+    // In production, might call: POST /api/auth/v1/logout
   },
 };
 
