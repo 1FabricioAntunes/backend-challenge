@@ -21,14 +21,6 @@ interface FilterState {
   endDate: string | null;
 }
 
-interface QueryParams {
-  storeId?: string;
-  startDate?: string;
-  endDate?: string;
-  page: number;
-  pageSize: number;
-}
-
 interface TransactionQueryComponentProps {
   storeId?: string;
   startDate?: string;
