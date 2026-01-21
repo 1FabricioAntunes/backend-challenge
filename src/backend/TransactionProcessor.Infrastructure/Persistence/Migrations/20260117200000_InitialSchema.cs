@@ -234,16 +234,15 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
                 });
 
             // Seed file statuses
-            migrationBuilder.InsertData(
-                table: "file_statuses",
-                columns: new[] { "status_code", "Description", "is_terminal" },
-                values: new object[,]
-                {
-                    { "Uploaded", "File uploaded, awaiting processing", false },
-                    { "Processing", "File currently being processed", false },
-                    { "Processed", "File successfully processed", true },
-                    { "Rejected", "File rejected due to validation or processing errors", true }
-                });
+            // Using raw SQL to avoid EF Core property mapping issues with snake_case column names
+            migrationBuilder.Sql(@"
+                INSERT INTO file_statuses (status_code, ""Description"", is_terminal) VALUES
+                ('Uploaded', 'File uploaded, awaiting processing', false),
+                ('Processing', 'File currently being processed', false),
+                ('Processed', 'File successfully processed', true),
+                ('Rejected', 'File rejected due to validation or processing errors', true)
+                ON CONFLICT (status_code) DO NOTHING;
+            ");
         }
 
         /// <inheritdoc />
