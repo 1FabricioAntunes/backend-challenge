@@ -97,13 +97,68 @@ public static class SecretsManagementExtensions
         var appSecrets = new AppSecrets();
 
         // Load Database secrets
-        appSecrets.Database = await LoadSecretWithFallbackAsync<DatabaseSecrets>(
-            secretsManager,
-            configuration,
-            "TransactionProcessor/Database/ConnectionString",
-            "ConnectionStrings:Default",
-            correlationId,
-            connectionString => new DatabaseSecrets { ConnectionString = connectionString });
+        // Note: Connection string is stored as plain text in Secrets Manager, not JSON
+        // So we need to handle it specially
+        // In development, LocalStack init scripts may take time to run, so we retry
+        var isDevelopment = configuration["ASPNETCORE_ENVIRONMENT"] == "Development";
+        var maxRetries = isDevelopment ? 5 : 1;
+        var retryDelay = TimeSpan.FromSeconds(2);
+        Exception? lastException = null;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                // Try to get as string first (connection strings are stored as plain text)
+                var connectionStringSecret = await secretsManager.GetSecretStringAsync(
+                    "TransactionProcessor/Database/ConnectionString", correlationId);
+                appSecrets.Database = new DatabaseSecrets { ConnectionString = connectionStringSecret };
+                Log.Information("[{CorrelationId}] Database connection string loaded from Secrets Manager (attempt {Attempt})", 
+                    correlationId, attempt);
+                break; // Success, exit retry loop
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                if (attempt < maxRetries)
+                {
+                    Log.Warning(ex, "[{CorrelationId}] Failed to load database connection string from Secrets Manager " +
+                        "(attempt {Attempt}/{MaxRetries}), retrying in {Delay}ms...", 
+                        correlationId, attempt, maxRetries, retryDelay.TotalMilliseconds);
+                    await Task.Delay(retryDelay);
+                }
+            }
+        }
+
+        // If all retries failed, handle fallback
+        if (string.IsNullOrWhiteSpace(appSecrets.Database.ConnectionString))
+        {
+            Log.Warning(lastException, "[{CorrelationId}] Failed to load database connection string from Secrets Manager after {MaxRetries} attempts, " +
+                "falling back to appsettings (development convenience only)", correlationId, maxRetries);
+
+            // SECURITY: Fallback to appsettings is for development convenience only
+            if (!isDevelopment)
+            {
+                throw new InvalidOperationException(
+                    $"SECURITY: Database connection string MUST be retrieved from Secrets Manager in production. " +
+                    $"Fallback to appsettings is not allowed. Error: {lastException?.Message}", lastException);
+            }
+
+            // Fallback to appsettings (development only)
+            var configValue = configuration["ConnectionStrings:Default"];
+            if (string.IsNullOrWhiteSpace(configValue))
+            {
+                throw new InvalidOperationException(
+                    $"Database connection string not found in Secrets Manager and fallback configuration key " +
+                    $"ConnectionStrings:Default is not set in appsettings. " +
+                    $"Ensure LocalStack Secrets Manager is running and secret is initialized. " +
+                    $"See: src/infra/localstack-init/init-secrets.sh", lastException);
+            }
+
+            Log.Warning("[{CorrelationId}] Using fallback connection string from appsettings (development only). " +
+                "Production deployments must use Secrets Manager.", correlationId);
+            appSecrets.Database = new DatabaseSecrets { ConnectionString = configValue };
+        }
 
         // Load S3 secrets
         appSecrets.S3 = await LoadS3SecretsAsync(secretsManager, configuration, correlationId);
