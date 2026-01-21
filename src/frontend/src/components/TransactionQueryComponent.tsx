@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
+import apiClient from '../services/api';
 import '../styles/TransactionQueryComponent.css';
 
 // TypeScript Interfaces
@@ -108,8 +109,8 @@ const TransactionQueryComponent = ({
         params.endDate = filters.endDate;
       }
 
-      // Call API
-      const response = await axios.get('/api/transactions/v1', { params });
+      // Call API using apiClient for consistent error handling and authentication
+      const response = await apiClient.get('/api/transactions/v1', { params });
 
       // Parse response
       const data = response.data;

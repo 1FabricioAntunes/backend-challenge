@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import axios from 'axios';
+import { AxiosError } from 'axios';
+import apiClient from '../services/api';
 
 // TypeScript Interfaces
 interface Store {
@@ -110,7 +111,7 @@ const StoreBalanceComponent = () => {
    * Map API errors to user-friendly Portuguese messages
    */
   const mapErrorMessage = (error: unknown): string => {
-    if (axios.isAxiosError(error)) {
+    if (error instanceof AxiosError) {
       if (!error.response) {
         return 'Erro de conexão. Verifique sua internet.';
       }
@@ -140,7 +141,8 @@ const StoreBalanceComponent = () => {
     setError(null);
 
     try {
-      const response = await axios.get('/api/stores/v1');
+      // Use apiClient for consistent error handling, authentication, and API versioning
+      const response = await apiClient.get('/api/stores/v1');
       const { stores: apiStores } = response.data;
 
       setStores(apiStores);
