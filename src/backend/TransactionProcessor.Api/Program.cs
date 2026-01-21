@@ -13,12 +13,20 @@ using TransactionProcessor.Api.Exceptions;
 using TransactionProcessor.Api.Extensions;
 using TransactionProcessor.Api.Middleware;
 using TransactionProcessor.Api.Models;
+using Amazon;
+using Amazon.S3;
+using Amazon.SQS;
 using TransactionProcessor.Application.Queries.Files;
+using TransactionProcessor.Application.Services;
+using TransactionProcessor.Domain.Interfaces;
 using TransactionProcessor.Domain.Repositories;
+using TransactionProcessor.Domain.Services;
+using TransactionProcessor.Infrastructure.Messaging;
 using TransactionProcessor.Infrastructure.Metrics;
 using TransactionProcessor.Infrastructure.Persistence;
 using TransactionProcessor.Infrastructure.Repositories;
 using TransactionProcessor.Infrastructure.Secrets;
+using TransactionProcessor.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,8 +78,60 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // ============================================================================
 // DEPENDENCY INJECTION
 // ============================================================================
+// Register AWS S3 client (supports LocalStack for development)
+var s3ServiceUrl = builder.Configuration["AWS:S3:ServiceUrl"];
+var sqsServiceUrl = builder.Configuration["AWS:SQS:ServiceUrl"];
+var awsRegion = builder.Configuration["AWS:Region"] ?? "us-east-1";
+
+builder.Services.AddSingleton<IAmazonS3>(sp =>
+{
+    var config = new AmazonS3Config
+    {
+        RegionEndpoint = RegionEndpoint.GetBySystemName(awsRegion)
+    };
+    
+    // Configure for LocalStack if service URL is provided
+    if (!string.IsNullOrEmpty(s3ServiceUrl))
+    {
+        config.ServiceURL = s3ServiceUrl;
+        config.ForcePathStyle = true; // Required for LocalStack
+    }
+    
+    return new AmazonS3Client(config);
+});
+
+// Register AWS SQS client (supports LocalStack for development)
+builder.Services.AddSingleton<IAmazonSQS>(sp =>
+{
+    var config = new AmazonSQSConfig
+    {
+        RegionEndpoint = RegionEndpoint.GetBySystemName(awsRegion)
+    };
+    
+    // Configure for LocalStack if service URL is provided
+    if (!string.IsNullOrEmpty(sqsServiceUrl))
+    {
+        config.ServiceURL = sqsServiceUrl;
+    }
+    
+    return new AmazonSQSClient(config);
+});
+
 // Register repositories
 builder.Services.AddScoped<IFileRepository, FileRepository>();
+builder.Services.AddScoped<IStoreRepository, StoreRepository>();
+builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+
+// Register domain services
+builder.Services.AddScoped<IFileValidator, FileValidator>();
+
+// Register application services
+builder.Services.AddScoped<ICNABParser, CNABParser>();
+builder.Services.AddScoped<ICNABValidator, CNABValidator>();
+
+// Register infrastructure services
+builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
+builder.Services.AddScoped<IMessageQueueService, SQSMessageQueueService>();
 
 // Register MediatR for query/command handling
 builder.Services.AddMediatR(config =>
@@ -241,6 +301,9 @@ Log.Information("[{CorrelationId}] Authentication configured: Authority={Authori
 // ============================================================================
 // SWAGGER/OPENAPI DOCUMENTATION
 // ============================================================================
+// Register API Explorer (required for NSwag/OpenAPI)
+builder.Services.AddEndpointsApiExplorer();
+
 // Configure NSwag for OpenAPI documentation
 builder.Services.AddOpenApiDocument(settings =>
 {
