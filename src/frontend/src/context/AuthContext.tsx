@@ -31,6 +31,26 @@ const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 /**
+ * SECURITY NOTE: Token Storage in localStorage
+ * 
+ * ⚠️ XSS Vulnerability: Tokens stored in localStorage are accessible to JavaScript,
+ * making them vulnerable to Cross-Site Scripting (XSS) attacks.
+ * 
+ * Current Implementation (Development/Demo):
+ * - Tokens stored in localStorage for simplicity
+ * - Suitable for development and demo purposes
+ * 
+ * Production Recommendation (per docs/security.md):
+ * - Use HttpOnly cookies for token storage (prevents JavaScript access)
+ * - Tokens sent automatically with requests via cookie header
+ * - Backend must set cookies with HttpOnly, Secure, and SameSite flags
+ * - Consider secure memory storage for sensitive applications
+ * 
+ * See: docs/security.md - "Insecure Token Storage" section
+ * See: technical-decisions.md - "JWT Security Considerations" section
+ */
+
+/**
  * Authentication Context
  * 
  * Provides authentication state and methods throughout the application.

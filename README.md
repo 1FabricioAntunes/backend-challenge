@@ -44,7 +44,7 @@ This project demonstrates a production-ready backend solution built with modern 
    **Development Mode** (with LocalStack, Prometheus, Grafana):
 
    ```bash
-   docker-compose --profile dev-only up -d
+   docker-compose --profile dev-only up -d --build
    # or use the deploy script
    ./deploy.sh dev
    ```

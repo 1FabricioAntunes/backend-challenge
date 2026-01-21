@@ -20,22 +20,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
+    # Note: PostgreSQL entrypoint needs to run as root to initialize data directory
+    # Security restrictions removed to allow proper initialization
     deploy:
       resources:
         limits:
           cpus: '1.0'
           memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d transactionprocessor"]
       interval: 10s
@@ -48,7 +39,7 @@ services:
   # LocalStack - AWS services emulation (S3, SQS, Secrets Manager, Cognito)
   # Note: Only runs in development mode via profile
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:3.0
     container_name: localstack
     restart: unless-stopped
     profiles:
@@ -59,6 +50,8 @@ services:
       - SERVICES=s3,sqs,secretsmanager,cognito-idp
       - AWS_DEFAULT_REGION=us-east-1
       - DEBUG=1
+      - LOCALSTACK_AUTH_TOKEN=
+      - PERSISTENCE=1
     volumes:
       - localstack-data:/var/lib/localstack
       # Auto-run init scripts when LocalStack is ready
@@ -72,9 +65,6 @@ services:
         limits:
           cpus: '1.0'
           memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -117,11 +107,8 @@ services:
         limits:
           cpus: '2.0'
           memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -162,9 +149,6 @@ services:
         limits:
           cpus: '1.0'
           memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -190,10 +174,8 @@ services:
       GF_INSTALL_PLUGINS: ''
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
-      # Mount provisioning configurations
+      # Mount provisioning configurations (includes dashboards)
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-      # Mount dashboard JSON
-      - ./infra/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/transaction-processor-main.json:ro
       # Persist Grafana data
       - grafana-data:/var/lib/grafana
     depends_on:
@@ -208,9 +190,6 @@ services:
         limits:
           cpus: '1.0'
           memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -221,12 +200,18 @@ services:
       - transactionprocessor-network
 
   # Frontend (Vite/React)
+  # Development: docker-compose --profile dev-only up -d --build (set FRONTEND_NODE_ENV=development)
+  # Production: docker-compose up -d --build (uses NODE_ENV=production by default)
+  # Note: For dev-only profile, export FRONTEND_NODE_ENV=development before running docker-compose
   frontend:
     build:
       context: ./src/frontend
       dockerfile: Dockerfile
       args:
+        NODE_ENV: development
         VITE_API_URL: http://localhost:5000
+    profiles:
+      - dev-only
     image: transactionprocessor-frontend:local
     container_name: transactionprocessor-frontend
     restart: unless-stopped
@@ -248,11 +233,8 @@ services:
         limits:
           cpus: '1.0'
           memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10

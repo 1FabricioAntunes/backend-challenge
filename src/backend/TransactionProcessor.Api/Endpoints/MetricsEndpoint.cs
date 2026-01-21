@@ -12,7 +12,7 @@ public class MetricsEndpoint : EndpointWithoutRequest
 {
     public override void Configure()
     {
-        Get("/metrics");
+        Get("/api/metrics");
         AllowAnonymous();  // Metrics endpoint should not require authentication
         Tags("Observability");
         Summary(s => s.Summary = "Prometheus metrics endpoint");
@@ -39,7 +39,7 @@ public class HealthCheckEndpoint : EndpointWithoutRequest<HealthCheckResponse>
 {
     public override void Configure()
     {
-        Get("/health");
+        Get("/api/health");
         AllowAnonymous();
         Tags("Observability");
         Summary(s => s.Summary = "Health check endpoint");

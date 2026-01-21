@@ -1,7 +1,7 @@
 global:
   scrape_interval: 15s  # Scrape every 15 seconds
   evaluation_interval: 15s
-  retention: 5m  # Retain metrics for 5 minutes
+  # Note: retention is configured via command line argument in docker-compose.yml
 
 # Alertmanager configuration
 alerting:
@@ -23,7 +23,7 @@ scrape_configs:
   # TransactionProcessor API metrics endpoint
   - job_name: 'transaction-processor-api'
     static_configs:
-      - targets: ['api:80']
-    metrics_path: '/metrics'
+      - targets: ['api:5000']
+    metrics_path: '/api/metrics'
     scrape_interval: 15s
     scrape_timeout: 10s

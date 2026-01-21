@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
+import apiClient from '../services/api';
 import '../styles/TransactionQueryComponent.css';
 
 // TypeScript Interfaces
@@ -19,14 +20,6 @@ interface FilterState {
   storeId: string | null;
   startDate: string | null;
   endDate: string | null;
-}
-
-interface QueryParams {
-  storeId?: string;
-  startDate?: string;
-  endDate?: string;
-  page: number;
-  pageSize: number;
 }
 
 interface TransactionQueryComponentProps {
@@ -116,8 +109,8 @@ const TransactionQueryComponent = ({
         params.endDate = filters.endDate;
       }
 
-      // Call API
-      const response = await axios.get('/api/transactions/v1', { params });
+      // Call API using apiClient for consistent error handling and authentication
+      const response = await apiClient.get('/api/transactions/v1', { params });
 
       // Parse response
       const data = response.data;
@@ -129,17 +122,17 @@ const TransactionQueryComponent = ({
     } catch (err) {
       // Handle errors
       const axiosError = err as AxiosError<{ error?: { message?: string } }>;
-      let errorMessage = 'Erro ao carregar transações.';
+      let errorMessage = 'Error loading transactions.';
 
       if (!axiosError.response) {
         // Network error
-        errorMessage = 'Erro de conexão. Verifique sua internet.';
+        errorMessage = 'Connection error. Please check your internet connection.';
       } else if (axiosError.response.status === 400) {
         // Bad request (invalid filters)
-        errorMessage = 'Filtros inválidos. Verifique os valores.';
+        errorMessage = 'Invalid filters. Please check the values.';
       } else if (axiosError.response.status === 500) {
         // Server error
-        errorMessage = 'Erro no servidor. Tente novamente.';
+        errorMessage = 'Server error. Please try again.';
       }
 
       setError(errorMessage);
@@ -206,16 +199,16 @@ const TransactionQueryComponent = ({
 
   // Formatting Helpers
   const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('pt-BR', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'BRL',
+      currency: 'USD',
     }).format(amount / 100);
   };
 
   const formatDate = (dateString: string): string => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR');
+      return date.toLocaleDateString('en-US');
     } catch {
       return dateString;
     }
@@ -223,17 +216,17 @@ const TransactionQueryComponent = ({
 
   const getTransactionTypeName = (type: string): string => {
     const typeNames: Record<string, string> = {
-      debit: 'Débito',
-      credit: 'Crédito',
-      '1': 'Débito',
-      '4': 'Crédito',
-      '5': 'Recebimento de Empréstimo',
-      '6': 'Vendas',
-      '7': 'Recebimento TED',
-      '8': 'Recebimento DOC',
-      '2': 'Boleto',
-      '3': 'Financiamento',
-      '9': 'Aluguel',
+      debit: 'Debit',
+      credit: 'Credit',
+      '1': 'Debit',
+      '4': 'Credit',
+      '5': 'Loan Receipt',
+      '6': 'Sales',
+      '7': 'TED Receipt',
+      '8': 'DOC Receipt',
+      '2': 'Ticket',
+      '3': 'Financing',
+      '9': 'Rent',
     };
     return typeNames[type] || type;
   };
@@ -242,9 +235,9 @@ const TransactionQueryComponent = ({
   return (
     <section className="transaction-query">
       <header className="transaction-query__header">
-        <h2 className="transaction-query__title">Consultar Transações</h2>
+        <h2 className="transaction-query__title">Query Transactions</h2>
         <p className="transaction-query__subtitle">
-          Filtrar e visualizar transações por loja e período
+          Filter and view transactions by store and period
         </p>
       </header>
 
@@ -261,7 +254,7 @@ const TransactionQueryComponent = ({
                 id="store-filter"
                 type="text"
                 className="filter-form__input"
-                placeholder="Nome da loja"
+                placeholder="Store name"
                 value={filters.storeId || ''}
                 onChange={handleStoreChange}
               />
@@ -270,7 +263,7 @@ const TransactionQueryComponent = ({
             {/* Start Date Filter */}
             <div className="filter-form__group">
               <label htmlFor="start-date-filter" className="filter-form__label">
-                Data Inicial
+                Start Date
               </label>
               <input
                 id="start-date-filter"
@@ -284,7 +277,7 @@ const TransactionQueryComponent = ({
             {/* End Date Filter */}
             <div className="filter-form__group">
               <label htmlFor="end-date-filter" className="filter-form__label">
-                Data Final
+                End Date
               </label>
               <input
                 id="end-date-filter"
@@ -303,7 +296,7 @@ const TransactionQueryComponent = ({
               className="filter-form__button filter-form__button--primary"
               disabled={isLoading}
             >
-              Aplicar Filtros
+              Apply Filters
             </button>
             <button
               type="button"
@@ -311,7 +304,7 @@ const TransactionQueryComponent = ({
               onClick={handleClearFilters}
               disabled={isLoading}
             >
-              Limpar Filtros
+              Clear Filters
             </button>
           </div>
 
@@ -335,12 +328,12 @@ const TransactionQueryComponent = ({
               )}
               {filters.startDate && (
                 <li className="active-filters__item">
-                  De: <strong>{formatDate(filters.startDate)}</strong>
+                  From: <strong>{formatDate(filters.startDate)}</strong>
                 </li>
               )}
               {filters.endDate && (
                 <li className="active-filters__item">
-                  Até: <strong>{formatDate(filters.endDate)}</strong>
+                  To: <strong>{formatDate(filters.endDate)}</strong>
                 </li>
               )}
             </ul>
@@ -352,7 +345,7 @@ const TransactionQueryComponent = ({
       {isLoading && (
         <div className="transaction-query__loading" role="status">
           <div className="spinner"></div>
-          <p>Carregando transações...</p>
+          <p>Loading transactions...</p>
         </div>
       )}
 
@@ -364,7 +357,7 @@ const TransactionQueryComponent = ({
             className="transaction-query__retry-button"
             onClick={applyFilters}
           >
-            Tentar Novamente
+            Try Again
           </button>
         </div>
       )}
@@ -372,7 +365,7 @@ const TransactionQueryComponent = ({
       {/* Empty State */}
       {!isLoading && !error && paginatedTransactions.length === 0 && (
         <div className="transaction-query__empty" role="status">
-          <p>Nenhuma transação encontrada. Ajuste os filtros e tente novamente.</p>
+          <p>No transactions found. Adjust the filters and try again.</p>
         </div>
       )}
 
@@ -383,10 +376,10 @@ const TransactionQueryComponent = ({
             <table className="transaction-table">
               <thead className="transaction-table__head">
                 <tr>
-                  <th className="transaction-table__header">Data</th>
-                  <th className="transaction-table__header">Loja</th>
-                  <th className="transaction-table__header">Valor</th>
-                  <th className="transaction-table__header">Tipo</th>
+                  <th className="transaction-table__header">Date</th>
+                  <th className="transaction-table__header">Store</th>
+                  <th className="transaction-table__header">Value</th>
+                  <th className="transaction-table__header">Type</th>
                 </tr>
               </thead>
               <tbody className="transaction-table__body">
@@ -426,7 +419,7 @@ const TransactionQueryComponent = ({
           <div className="transaction-query__pagination">
             <div className="pagination__info">
               <p>
-                Mostrando {paginatedTransactions.length} de {totalCount} transações
+                Showing {paginatedTransactions.length} of {totalCount} transactions
               </p>
               <label htmlFor="page-size-select" className="pagination__label">
                 Itens por página:
@@ -449,11 +442,11 @@ const TransactionQueryComponent = ({
                 onClick={() => goToPage(currentPage - 1)}
                 disabled={currentPage === 1 || isLoading}
               >
-                ← Anterior
+                ← Previous
               </button>
 
               <span className="pagination__indicator">
-                Página {currentPage} de {totalPages || 1}
+                Page {currentPage} of {totalPages || 1}
               </span>
 
               <button
@@ -461,7 +454,7 @@ const TransactionQueryComponent = ({
                 onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage >= totalPages || isLoading}
               >
-                Próxima →
+                Next →
               </button>
             </div>
           </div>
