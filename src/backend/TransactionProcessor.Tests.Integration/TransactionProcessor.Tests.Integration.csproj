@@ -20,6 +20,7 @@
     <PackageReference Include="Testcontainers.LocalStack" Version="3.8.0" />
     <PackageReference Include="AWSSDK.SecretsManager" Version="3.7.400" />
     <PackageReference Include="FastEndpoints.Testing" Version="5.17.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
     <PackageReference Include="MediatR" Version="14.0.0" />
   </ItemGroup>
 
