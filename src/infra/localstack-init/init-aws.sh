@@ -88,6 +88,17 @@ awslocal cloudwatch put-metric-alarm \
 
 echo "[init] LocalStack AWS resource initialization complete."
 # ============================================================================
+# COGNITO INITIALIZATION
+# ============================================================================
+# Call the Cognito initialization script
+if [ -f "/etc/localstack/init/ready.d/init-cognito.sh" ]; then
+  echo "[init] Executing Cognito initialization script..."
+  bash /etc/localstack/init/ready.d/init-cognito.sh
+else
+  echo "[init] Warning: init-cognito.sh not found, skipping Cognito initialization"
+fi
+
+# ============================================================================
 # SECRETS MANAGER INITIALIZATION
 # ============================================================================
 # Call the secrets initialization script
