@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using TransactionProcessor.Application.Models;
 
@@ -43,12 +44,15 @@ public class CNABParser : ICNABParser
 
         try
         {
-            using (var reader = new StreamReader(fileStream, Encoding.ASCII))
+            // Read as UTF-8 to handle files with accented characters, then normalize to ASCII
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, leaveOpen: true))
             {
                 string? line;
                 while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
                 {
-                    lines.Add(line);
+                    // Normalize UTF-8 accented characters to ASCII (e.g., "JOÃO" -> "JOAO")
+                    string normalizedLine = NormalizeToAscii(line);
+                    lines.Add(normalizedLine);
                 }
             }
         }
@@ -223,5 +227,45 @@ public class CNABParser : ICNABParser
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Normalize UTF-8 string to ASCII by removing diacritics from accented characters.
+    /// Example: "JOÃO" -> "JOAO", "São Paulo" -> "Sao Paulo"
+    /// This allows files with UTF-8 encoded accented characters to be processed as ASCII.
+    /// </summary>
+    /// <param name="input">Input string that may contain UTF-8 accented characters</param>
+    /// <returns>ASCII-normalized string</returns>
+    private static string NormalizeToAscii(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Normalize to NFD (decomposed form) which separates base characters from diacritics
+        // Then remove diacritics and convert to ASCII
+        var normalized = input.Normalize(NormalizationForm.FormD);
+        var stringBuilder = new StringBuilder();
+
+        foreach (var c in normalized)
+        {
+            var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+            // Keep only base characters (not combining marks/diacritics)
+            if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+            {
+                // Convert to ASCII - characters <= 127 are already ASCII
+                if (c <= 127)
+                {
+                    stringBuilder.Append(c);
+                }
+                else
+                {
+                    // For characters outside ASCII after normalization, replace with space
+                    // This handles any remaining special characters
+                    stringBuilder.Append(' ');
+                }
+            }
+        }
+
+        return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
     }
 }
