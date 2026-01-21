@@ -41,10 +41,10 @@ const formatDuration = (startIso: string, endIso: string | null) => {
 };
 
 const getStatusNote = (status: FileStatus) => {
-  if (status === 'Processing') return 'Em processamento';
-  if (status === 'Uploaded') return 'Fila de processamento';
-  if (status === 'Processed') return 'Processado com sucesso';
-  return 'Rejeitado';
+  if (status === 'Processing') return 'Processing';
+  if (status === 'Uploaded') return 'Processing queue';
+  if (status === 'Processed') return 'Processed successfully';
+  return 'Rejected';
 };
 
 export default function FileDetailsPanel({
@@ -64,9 +64,9 @@ export default function FileDetailsPanel({
       helper: lastCheckedTime ? 'Atualizado' : 'Em tempo real',
     },
     {
-      label: 'Registros',
-      value: processedCount !== undefined ? processedCount : 'Em processamento',
-      helper: 'Total de transações',
+      label: 'Records',
+      value: processedCount !== undefined ? processedCount : 'Processing',
+      helper: 'Total transactions',
     },
     {
       label: 'Status',
@@ -87,7 +87,7 @@ export default function FileDetailsPanel({
     <div className="detail-card" role="region" aria-live="polite" tabIndex={-1}>
       <div className="detail-card__header">
         <div>
-          <p className="detail-eyebrow">Arquivo selecionado</p>
+          <p className="detail-eyebrow">Selected file</p>
           <h3 className="detail-title">{file.name}</h3>
           <p className="detail-id">ID: {file.id}</p>
         </div>
@@ -103,7 +103,7 @@ export default function FileDetailsPanel({
 
       <div className="detail-grid">
         <div className="detail-item">
-          <p className="detail-label">Enviado em</p>
+          <p className="detail-label">Uploaded at</p>
           <p className="detail-value">{formatDateTime(file.uploadTime)}</p>
         </div>
         <div className="detail-item">
@@ -113,9 +113,9 @@ export default function FileDetailsPanel({
           </p>
         </div>
         <div className="detail-item">
-          <p className="detail-label">Transações</p>
+          <p className="detail-label">Transactions</p>
           <p className="detail-value">
-            {processedCount !== undefined ? processedCount : 'Em processamento'}
+            {processedCount !== undefined ? processedCount : 'Processing'}
           </p>
         </div>
       </div>
@@ -132,9 +132,9 @@ export default function FileDetailsPanel({
 
       {file.errorMessage && (
         <div className="detail-error" role="alert">
-          <p className="detail-error__title">Motivo da rejeição</p>
+          <p className="detail-error__title">Rejection reason</p>
           <p className="detail-error__message">{file.errorMessage}</p>
-          <p className="detail-error__context">Linha de contexto: não disponível</p>
+          <p className="detail-error__context">Context line: not available</p>
         </div>
       )}
 

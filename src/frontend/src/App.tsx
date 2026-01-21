@@ -51,7 +51,7 @@ export default function App() {
         <div className="app-header-content">
           <div className="app-header-left">
             <h1 className="app-title">Transaction Processor</h1>
-            <p className="app-subtitle">Gerenciamento de Transações CNAB</p>
+            <p className="app-subtitle">CNAB Transaction Management</p>
           </div>
           <div className="app-header-right">
             <div className="user-info">
@@ -96,14 +96,14 @@ export default function App() {
           onClick={() => setActiveTab('upload')}
           aria-current={activeTab === 'upload' ? 'page' : undefined}
         >
-          Enviar Arquivo
+          Upload File
         </button>
         <button
           className={`tab-button ${activeTab === 'transactions' ? 'active' : ''}`}
           onClick={() => setActiveTab('transactions')}
           aria-current={activeTab === 'transactions' ? 'page' : undefined}
         >
-          Consultar Transações
+          Query Transactions
         </button>
       </nav>
 
