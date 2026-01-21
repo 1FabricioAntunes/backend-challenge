@@ -144,17 +144,33 @@ public static class SecretsManagementExtensions
         catch (Exception ex)
         {
             Log.Warning(ex, "[{CorrelationId}] Failed to load secret {SecretId} from Secrets Manager, " +
-                "falling back to appsettings", correlationId, secretId);
+                "falling back to appsettings (development convenience only)", correlationId, secretId);
 
-            // Fallback to appsettings
+            // SECURITY: Fallback to appsettings is for development convenience only
+            // Production deployments MUST use Secrets Manager - fail fast if not available
+            // See: docs/security.md § Secrets Management
+            // See: technical-decisions.md § 3.1 Configuration-First Principle
+            var isDevelopment = configuration["ASPNETCORE_ENVIRONMENT"] == "Development";
+            if (!isDevelopment)
+            {
+                throw new InvalidOperationException(
+                    $"SECURITY: Secret {secretId} MUST be retrieved from Secrets Manager in production. " +
+                    $"Fallback to appsettings is not allowed. Error: {ex.Message}", ex);
+            }
+
+            // Fallback to appsettings (development only)
             var configValue = configuration[fallbackConfigKey];
             if (string.IsNullOrWhiteSpace(configValue))
             {
                 throw new InvalidOperationException(
                     $"Secret {secretId} not found in Secrets Manager and fallback configuration key " +
-                    $"{fallbackConfigKey} is not set in appsettings");
+                    $"{fallbackConfigKey} is not set in appsettings. " +
+                    $"Ensure LocalStack Secrets Manager is running and secret is initialized. " +
+                    $"See: src/infra/localstack-init/init-secrets.sh", ex);
             }
 
+            Log.Warning("[{CorrelationId}] Using fallback connection string from appsettings (development only). " +
+                "Production deployments must use Secrets Manager.", correlationId);
             return createFromString(configValue);
         }
     }
