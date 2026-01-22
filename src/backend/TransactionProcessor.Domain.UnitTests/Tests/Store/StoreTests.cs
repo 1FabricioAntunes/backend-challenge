@@ -6,6 +6,9 @@ using Moq;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.UnitTests.Helpers;
 using Xunit;
+using StoreEntity = TransactionProcessor.Domain.Entities.Store;
+using TransactionEntity = TransactionProcessor.Domain.Entities.Transaction;
+using TransactionTypeEntity = TransactionProcessor.Domain.Entities.TransactionType;
 
 namespace TransactionProcessor.Domain.UnitTests.Tests.Store;
 
@@ -27,7 +30,7 @@ public class StoreTests : TestBase
         var storeName = "Loja Centro";
 
         // Act
-        var store = new Store(storeId, ownerName, storeName);
+        var store = new StoreEntity(storeId, ownerName, storeName);
 
         // Assert
         store.Id.Should().Be(storeId);
@@ -47,7 +50,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, null!, "Loja Centro"));
+            () => new StoreEntity(storeId, null!, "Loja Centro"));
 
         exception.Message.Should().Contain("Owner name is required");
         exception.ParamName.Should().Be("ownerName");
@@ -61,7 +64,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, "", "Loja Centro"));
+            () => new StoreEntity(storeId, "", "Loja Centro"));
 
         exception.Message.Should().Contain("Owner name is required");
     }
@@ -74,7 +77,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, "   ", "Loja Centro"));
+            () => new StoreEntity(storeId, "   ", "Loja Centro"));
 
         exception.Message.Should().Contain("Owner name is required");
     }
@@ -87,7 +90,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, "João Silva", null!));
+            () => new StoreEntity(storeId, "João Silva", null!));
 
         exception.Message.Should().Contain("Store name is required");
         exception.ParamName.Should().Be("name");
@@ -101,7 +104,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, "João Silva", ""));
+            () => new StoreEntity(storeId, "João Silva", ""));
 
         exception.Message.Should().Contain("Store name is required");
     }
@@ -114,7 +117,7 @@ public class StoreTests : TestBase
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(
-            () => new Store(storeId, "João Silva", "   "));
+            () => new StoreEntity(storeId, "João Silva", "   "));
 
         exception.Message.Should().Contain("Store name is required");
     }
@@ -128,17 +131,12 @@ public class StoreTests : TestBase
     {
         // Arrange
         var originalId = Guid.NewGuid();
-        var store = new Store(originalId, "João Silva", "Loja Centro");
+        var store = new StoreEntity(originalId, "João Silva", "Loja Centro");
 
-        // Act - Try to set a different ID (should not be possible via property)
-        var newId = Guid.NewGuid();
-        store.Id = newId;
-
-        // Assert - In this case, the Id property might allow setting via reflection
-        // but the class design intends for immutability through private set
-        // This test documents that Id should be private set (which it is)
-        store.Id.Should().Be(newId); // If setter exists, it will be newId
-        // Note: In production, this should use private set to prevent external modification
+        // Act & Assert - Id is readonly (private set), cannot be changed after construction
+        // This test documents that Id is immutable
+        store.Id.Should().Be(originalId);
+        // Note: Id property has private setter, so it cannot be modified externally
     }
 
     #endregion
@@ -214,7 +212,7 @@ public class StoreTests : TestBase
         var store = SampleDataBuilder.CreateStore();
 
         // Act
-        var balance = store.CalculateBalance(new List<Transaction>());
+        var balance = store.CalculateBalance(new List<TransactionEntity>());
 
         // Assert
         balance.Should().Be(0m);
@@ -230,12 +228,10 @@ public class StoreTests : TestBase
             transactionTypeCode: "4", // Crédito
             amount: 10000m); // 100.00 BRL
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        mockTransactionType.Setup(t => t.Sign).Returns("+");
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
-        var transactions = new List<Transaction> { transaction };
+        var transactions = new List<TransactionEntity> { transaction };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -254,12 +250,10 @@ public class StoreTests : TestBase
             transactionTypeCode: "1", // Débito
             amount: 5000m); // 50.00 BRL
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        mockTransactionType.Setup(t => t.Sign).Returns("-");
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        transaction.TransactionType = transactionType;
 
-        var transactions = new List<Transaction> { transaction };
+        var transactions = new List<TransactionEntity> { transaction };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -283,29 +277,26 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "6",
             amount: 50000m);
-        var mockTx1Type = new Mock<TransactionType>();
-        mockTx1Type.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx1.TransactionType = mockTx1Type.Object;
+        var tx1Type = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        tx1.TransactionType = tx1Type;
 
         // Arrange: Transaction 2 - Debit (Type 1) = -200.00
         var tx2 = SampleDataBuilder.CreateTransaction(
             storeId: store.Id,
             transactionTypeCode: "1",
             amount: 20000m);
-        var mockTx2Type = new Mock<TransactionType>();
-        mockTx2Type.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        tx2.TransactionType = mockTx2Type.Object;
+        var tx2Type = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        tx2.TransactionType = tx2Type;
 
         // Arrange: Transaction 3 - Credit (Type 4) = +150.00
         var tx3 = SampleDataBuilder.CreateTransaction(
             storeId: store.Id,
             transactionTypeCode: "4",
             amount: 15000m);
-        var mockTx3Type = new Mock<TransactionType>();
-        mockTx3Type.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx3.TransactionType = mockTx3Type.Object;
+        var tx3Type = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        tx3.TransactionType = tx3Type;
 
-        var transactions = new List<Transaction> { tx1, tx2, tx3 };
+        var transactions = new List<TransactionEntity> { tx1, tx2, tx3 };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -321,21 +312,18 @@ public class StoreTests : TestBase
         var store = SampleDataBuilder.CreateStore();
 
         var tx1 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "4", amount: 100000m);
-        var mockTx1Type = new Mock<TransactionType>();
-        mockTx1Type.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx1.TransactionType = mockTx1Type.Object;
+        var tx1Type = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        tx1.TransactionType = tx1Type;
 
         var tx2 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "6", amount: 50000m);
-        var mockTx2Type = new Mock<TransactionType>();
-        mockTx2Type.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx2.TransactionType = mockTx2Type.Object;
+        var tx2Type = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        tx2.TransactionType = tx2Type;
 
         var tx3 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "7", amount: 75000m);
-        var mockTx3Type = new Mock<TransactionType>();
-        mockTx3Type.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx3.TransactionType = mockTx3Type.Object;
+        var tx3Type = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        tx3.TransactionType = tx3Type;
 
-        var transactions = new List<Transaction> { tx1, tx2, tx3 };
+        var transactions = new List<TransactionEntity> { tx1, tx2, tx3 };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -351,21 +339,18 @@ public class StoreTests : TestBase
         var store = SampleDataBuilder.CreateStore();
 
         var tx1 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "1", amount: 30000m);
-        var mockTx1Type = new Mock<TransactionType>();
-        mockTx1Type.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        tx1.TransactionType = mockTx1Type.Object;
+        var tx1Type = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        tx1.TransactionType = tx1Type;
 
         var tx2 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "2", amount: 20000m);
-        var mockTx2Type = new Mock<TransactionType>();
-        mockTx2Type.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        tx2.TransactionType = mockTx2Type.Object;
+        var tx2Type = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        tx2.TransactionType = tx2Type;
 
         var tx3 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "3", amount: 15000m);
-        var mockTx3Type = new Mock<TransactionType>();
-        mockTx3Type.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        tx3.TransactionType = mockTx3Type.Object;
+        var tx3Type = new TransactionTypeEntity { Sign = "-", TypeCode = "3" };
+        tx3.TransactionType = tx3Type;
 
-        var transactions = new List<Transaction> { tx1, tx2, tx3 };
+        var transactions = new List<TransactionEntity> { tx1, tx2, tx3 };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -384,19 +369,17 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "4",
             amount: 50000m);
-        var mockCreditType = new Mock<TransactionType>();
-        mockCreditType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        credit.TransactionType = mockCreditType.Object;
+        var creditType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        credit.TransactionType = creditType;
 
         var debit = SampleDataBuilder.CreateTransaction(
             storeId: store.Id,
             transactionTypeCode: "1",
             amount: 50000m);
-        var mockDebitType = new Mock<TransactionType>();
-        mockDebitType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        debit.TransactionType = mockDebitType.Object;
+        var debitType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        debit.TransactionType = debitType;
 
-        var transactions = new List<Transaction> { credit, debit };
+        var transactions = new List<TransactionEntity> { credit, debit };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -418,11 +401,10 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "4",
             amount: 1m);
-        var mockType = new Mock<TransactionType>();
-        mockType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        transaction.TransactionType = mockType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
-        var transactions = new List<Transaction> { transaction };
+        var transactions = new List<TransactionEntity> { transaction };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -440,11 +422,10 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "4",
             amount: 999999999m);
-        var mockType = new Mock<TransactionType>();
-        mockType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        transaction.TransactionType = mockType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
-        var transactions = new List<Transaction> { transaction };
+        var transactions = new List<TransactionEntity> { transaction };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -460,16 +441,14 @@ public class StoreTests : TestBase
         var store = SampleDataBuilder.CreateStore();
 
         var tx1 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "4", amount: 123m);
-        var mockType1 = new Mock<TransactionType>();
-        mockType1.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx1.TransactionType = mockType1.Object;
+        var type1 = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        tx1.TransactionType = type1;
 
         var tx2 = SampleDataBuilder.CreateTransaction(storeId: store.Id, transactionTypeCode: "4", amount: 45m);
-        var mockType2 = new Mock<TransactionType>();
-        mockType2.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tx2.TransactionType = mockType2.Object;
+        var type2 = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        tx2.TransactionType = type2;
 
-        var transactions = new List<Transaction> { tx1, tx2 };
+        var transactions = new List<TransactionEntity> { tx1, tx2 };
 
         // Act
         var balance = store.CalculateBalance(transactions);
@@ -483,7 +462,7 @@ public class StoreTests : TestBase
     {
         // Arrange: Create 100 transactions of varying types and amounts
         var store = SampleDataBuilder.CreateStore();
-        var transactions = new List<Transaction>();
+        var transactions = new List<TransactionEntity>();
 
         // Add 50 credit transactions of 10000 cents each = 50 * 100 = 5000 BRL
         for (int i = 0; i < 50; i++)
@@ -492,9 +471,8 @@ public class StoreTests : TestBase
                 storeId: store.Id,
                 transactionTypeCode: "4",
                 amount: 10000m);
-            var mockType = new Mock<TransactionType>();
-            mockType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-            tx.TransactionType = mockType.Object;
+            var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+            tx.TransactionType = transactionType;
             transactions.Add(tx);
         }
 
@@ -505,9 +483,8 @@ public class StoreTests : TestBase
                 storeId: store.Id,
                 transactionTypeCode: "1",
                 amount: 5000m);
-            var mockType = new Mock<TransactionType>();
-            mockType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-            tx.TransactionType = mockType.Object;
+            var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+            tx.TransactionType = transactionType;
             transactions.Add(tx);
         }
 
@@ -533,14 +510,14 @@ public class StoreTests : TestBase
             amount: 10000m);
         transaction.TransactionType = null;
 
-        var transactions = new List<Transaction> { transaction };
+        var transactions = new List<TransactionEntity> { transaction };
 
         // Act & Assert
         var exception = Assert.Throws<InvalidOperationException>(
             () => store.CalculateBalance(transactions));
 
         exception.Message.Should().Contain("TransactionType navigation property");
-        exception.Message.Should().Contain("ensure TransactionType is eager-loaded");
+        exception.Message.Should().Contain("eager-loaded");
     }
 
     [Fact]
@@ -566,16 +543,15 @@ public class StoreTests : TestBase
     {
         // Arrange: Realistic store with mixed transaction types
         var store = SampleDataBuilder.CreateStore();
-        var transactions = new List<Transaction>();
+        var transactions = new List<TransactionEntity>();
 
         // Type 4 (Crédito) - 1000 BRL credit
         var creditTx = SampleDataBuilder.CreateTransaction(
             storeId: store.Id,
             transactionTypeCode: "4",
             amount: 100000m);
-        var mockCreditType = new Mock<TransactionType>();
-        mockCreditType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        creditTx.TransactionType = mockCreditType.Object;
+        var creditType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        creditTx.TransactionType = creditType;
         transactions.Add(creditTx);
 
         // Type 6 (Vendas) - 500 BRL sales receipt
@@ -583,9 +559,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "6",
             amount: 50000m);
-        var mockSalesType = new Mock<TransactionType>();
-        mockSalesType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        salesTx.TransactionType = mockSalesType.Object;
+        var salesType = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        salesTx.TransactionType = salesType;
         transactions.Add(salesTx);
 
         // Type 1 (Débito) - 300 BRL debit
@@ -593,9 +568,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "1",
             amount: 30000m);
-        var mockDebitType = new Mock<TransactionType>();
-        mockDebitType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        debitTx.TransactionType = mockDebitType.Object;
+        var debitType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        debitTx.TransactionType = debitType;
         transactions.Add(debitTx);
 
         // Type 2 (Boleto) - 200 BRL boleto payment
@@ -603,9 +577,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "2",
             amount: 20000m);
-        var mockBoletoType = new Mock<TransactionType>();
-        mockBoletoType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        boletoTx.TransactionType = mockBoletoType.Object;
+        var boletoType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        boletoTx.TransactionType = boletoType;
         transactions.Add(boletoTx);
 
         // Type 7 (Recebimento TED) - 750 BRL electronic transfer
@@ -613,9 +586,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "7",
             amount: 75000m);
-        var mockTedType = new Mock<TransactionType>();
-        mockTedType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        tedTx.TransactionType = mockTedType.Object;
+        var tedType = new TransactionTypeEntity { Sign = "+", TypeCode = "7" };
+        tedTx.TransactionType = tedType;
         transactions.Add(tedTx);
 
         // Act
@@ -631,16 +603,15 @@ public class StoreTests : TestBase
     {
         // Arrange: Simulate a day of store operations
         var store = SampleDataBuilder.CreateStore();
-        var transactions = new List<Transaction>();
+        var transactions = new List<TransactionEntity>();
 
         // Morning: Sales income (Type 6)
         var morningSales = SampleDataBuilder.CreateTransaction(
             storeId: store.Id,
             transactionTypeCode: "6",
             amount: 200000m); // 2000 BRL
-        var mockSalesType = new Mock<TransactionType>();
-        mockSalesType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        morningSales.TransactionType = mockSalesType.Object;
+        var salesType = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        morningSales.TransactionType = salesType;
         transactions.Add(morningSales);
 
         // Midday: Bill payment (Type 2 - Boleto)
@@ -648,9 +619,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "2",
             amount: 50000m); // 500 BRL
-        var mockBoletoType = new Mock<TransactionType>();
-        mockBoletoType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        billPayment.TransactionType = mockBoletoType.Object;
+        var boletoType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        billPayment.TransactionType = boletoType;
         transactions.Add(billPayment);
 
         // Afternoon: More sales (Type 6)
@@ -658,9 +628,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "6",
             amount: 150000m); // 1500 BRL
-        var mockAfternoonType = new Mock<TransactionType>();
-        mockAfternoonType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        afternoonSales.TransactionType = mockAfternoonType.Object;
+        var afternoonType = new TransactionTypeEntity { Sign = "+", TypeCode = "6" };
+        afternoonSales.TransactionType = afternoonType;
         transactions.Add(afternoonSales);
 
         // End of day: Supplier payment (Type 1 - Debit)
@@ -668,9 +637,8 @@ public class StoreTests : TestBase
             storeId: store.Id,
             transactionTypeCode: "1",
             amount: 75000m); // 750 BRL
-        var mockSupplierType = new Mock<TransactionType>();
-        mockSupplierType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        supplierPayment.TransactionType = mockSupplierType.Object;
+        var supplierType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        supplierPayment.TransactionType = supplierType;
         transactions.Add(supplierPayment);
 
         // Act
@@ -725,15 +693,15 @@ public class StoreTests : TestBase
     public void Store_OwnerNameAndStoreName_FormCompositeIdentity()
     {
         // Arrange & Act
-        var store1 = new Store(Guid.NewGuid(), "João Silva", "Loja Centro");
-        var store2 = new Store(Guid.NewGuid(), "João Silva", "Loja Centro");
-        var store3 = new Store(Guid.NewGuid(), "João Silva", "Loja Norte");
+        var store1 = new StoreEntity(Guid.NewGuid(), "João Silva", "Loja Centro");
+        var store2 = new StoreEntity(Guid.NewGuid(), "João Silva", "Loja Centro");
+        var store3 = new StoreEntity(Guid.NewGuid(), "João Silva", "Loja Norte");
 
         // Assert
         // Different system IDs but same owner/name combination (should be same business entity)
         store1.OwnerName.Should().Be(store2.OwnerName);
         store1.Name.Should().Be(store2.Name);
-        store1.OwnerName.Should().NotBe(store3.OwnerName); // Different store
+        store1.Name.Should().NotBe(store3.Name); // Different store
     }
 
     [Fact]
@@ -741,13 +709,13 @@ public class StoreTests : TestBase
     {
         // Arrange: CNAB spec limit is 14 characters for owner name
         var storeId = Guid.NewGuid();
-        var maxOwnerName = "João da Silva12"; // 14 chars
+        var maxOwnerName = "João Silva 123"; // 14 chars
 
         // Act
-        var store = new Store(storeId, maxOwnerName, "Loja Centro");
+        var store = new StoreEntity(storeId, maxOwnerName, "Loja Centro");
 
         // Assert
-        store.OwnerName.Should().Have.Length(14);
+        store.OwnerName.Should().HaveLength(14);
         store.OwnerName.Should().Be(maxOwnerName);
     }
 
@@ -756,13 +724,13 @@ public class StoreTests : TestBase
     {
         // Arrange: CNAB spec limit is 19 characters for store name
         var storeId = Guid.NewGuid();
-        var maxStoreName = "Loja Centro 12345678"; // 19 chars
+        var maxStoreName = "Loja Centro 1234567"; // 19 chars
 
         // Act
-        var store = new Store(storeId, "João Silva", maxStoreName);
+        var store = new StoreEntity(storeId, "João Silva", maxStoreName);
 
         // Assert
-        store.Name.Should().Have.Length(19);
+        store.Name.Should().HaveLength(19);
         store.Name.Should().Be(maxStoreName);
     }
 

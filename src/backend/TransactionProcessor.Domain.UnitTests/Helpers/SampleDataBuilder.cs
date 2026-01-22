@@ -20,18 +20,8 @@ public class SampleDataBuilder
         string ownerName = "João Silva",
         string name = "MERCADO DA AVENIDA")
     {
-        var store = new Store
-        {
-            OwnerName = ownerName,
-            Name = name
-        };
-
-        if (id.HasValue)
-        {
-            // Use reflection to set private Id property for testing
-            var idProperty = typeof(Store).GetProperty("Id");
-            idProperty?.SetValue(store, id.Value);
-        }
+        var storeId = id ?? Guid.NewGuid();
+        var store = new Store(storeId, ownerName, name);
 
         return store;
     }

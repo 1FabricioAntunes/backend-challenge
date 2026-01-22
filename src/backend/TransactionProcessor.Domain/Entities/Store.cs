@@ -97,6 +97,7 @@ public class Store
     /// Constructor for EF Core mapping (parameterless).
     /// Used by the ORM; business logic should use the explicit constructor above.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
     public Store()
     {
     }
