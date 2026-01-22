@@ -161,7 +161,17 @@ builder.Services.AddScoped<ICNABValidator, CNABValidator>();
 
 // Register infrastructure services
 builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
-builder.Services.AddScoped<IMessageQueueService, SQSMessageQueueService>();
+
+// Register SQS Message Queue Service with explicit AwsSqsSecrets injection
+// The secrets are already loaded and registered as singleton in AddSecretsManagementAndGetSecrets
+builder.Services.AddScoped<IMessageQueueService>(sp =>
+{
+    var sqsClient = sp.GetRequiredService<IAmazonSQS>();
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var sqsSecrets = sp.GetService<TransactionProcessor.Infrastructure.Secrets.AwsSqsSecrets>(); // Optional, may be null
+    var logger = sp.GetRequiredService<ILogger<SQSMessageQueueService>>();
+    return new SQSMessageQueueService(sqsClient, configuration, sqsSecrets, logger);
+});
 
 // Register mock Cognito service for development (when LocalStack Cognito unavailable)
 var isDevelopment = builder.Environment.IsDevelopment();
