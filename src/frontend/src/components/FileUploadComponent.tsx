@@ -10,7 +10,11 @@ type UploadResponse = {
   fileId: string;
 };
 
-const FileUploadComponent = () => {
+interface FileUploadComponentProps {
+  onFileUploaded?: (fileId: string) => void;
+}
+
+const FileUploadComponent = ({ onFileUploaded }: FileUploadComponentProps = {}) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadSpeed, setUploadSpeed] = useState<number | null>(null); // bytes/sec
@@ -263,14 +267,26 @@ const FileUploadComponent = () => {
                 ×
               </button>
             </div>
-            <a
-              href={`/files/${uploadedFileId}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: '#0b6b38', textDecoration: 'underline', fontWeight: 600 }}
+            <button
+              type="button"
+              onClick={() => {
+                if (uploadedFileId && onFileUploaded) {
+                  onFileUploaded(uploadedFileId);
+                }
+              }}
+              style={{ 
+                color: '#0b6b38', 
+                textDecoration: 'underline', 
+                fontWeight: 600,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                padding: 0
+              }}
             >
               View uploaded file status
-            </a>
+            </button>
           </div>
         )}
 
