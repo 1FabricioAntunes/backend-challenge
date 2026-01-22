@@ -134,6 +134,41 @@ services:
     networks:
       - transactionprocessor-network
 
+  # Background Worker (.NET) - Processes files from SQS queue
+  worker:
+    build:
+      context: ./src/backend
+      dockerfile: TransactionProcessor.Worker/Dockerfile
+    image: transactionprocessor-worker:local
+    container_name: transactionprocessor-worker
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Connection string MUST come from Secrets Manager (LocalStack in dev, AWS in prod)
+      # See: docs/security.md § Secrets Management
+      AWS__Region: us-east-1
+      AWS__SecretsManager__ServiceURL: http://localstack:4566
+      AWS__S3__ServiceURL: http://localstack:4566
+      AWS__SQS__ServiceURL: http://localstack:4566
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - transactionprocessor-network
+
   # Prometheus - Metrics collection and monitoring
   # Note: Only runs in development mode via profile
   prometheus:
