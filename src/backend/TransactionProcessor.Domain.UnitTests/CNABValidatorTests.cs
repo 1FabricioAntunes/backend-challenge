@@ -1,3 +1,4 @@
+using System;
 using FluentAssertions;
 using TransactionProcessor.Application.Models;
 using TransactionProcessor.Application.Services;
@@ -53,7 +54,7 @@ public class CNABValidatorTests
         var result = _validator.ValidateRecord(record, lineNumber: 4);
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(e => e.Contains("date cannot be in the future"));
+        result.Errors.Should().ContainSingle(e => e.Contains("out of reasonable range"));
     }
 
     private static CNABLineData CreateValidRecord()

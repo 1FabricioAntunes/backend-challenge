@@ -193,6 +193,13 @@ public class Transaction
                 $"Transaction amount must be greater than 0. Received: {amount}",
                 nameof(amount));
 
+        // Validate transaction date is not in the future (business rule)
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (transactionDate > today)
+            throw new ArgumentException(
+                $"Transaction date cannot be in the future. Received: {transactionDate}",
+                nameof(transactionDate));
+
         // Set immutable properties
         FileId = fileId;
         StoreId = storeId;
@@ -211,6 +218,7 @@ public class Transaction
     /// Used by the ORM for deserialization from database.
     /// Business logic should use the explicit constructor above.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
     public Transaction()
     {
     }
