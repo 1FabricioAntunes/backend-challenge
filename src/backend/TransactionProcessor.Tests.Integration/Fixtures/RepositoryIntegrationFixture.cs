@@ -218,15 +218,15 @@ public class RepositoryIntegrationFixture : IAsyncLifetime
         // Seed transaction types
         await context.Database.ExecuteSqlRawAsync(@"
             INSERT INTO transaction_types (type_code, ""Description"", ""Nature"", ""Sign"") VALUES
-            ('1', 'Débito', 'Expense', '-'),
+            ('1', 'Debit', 'Income', '+'),
             ('2', 'Boleto', 'Expense', '-'),
-            ('3', 'Financiamento', 'Expense', '-'),
-            ('4', 'Crédito', 'Income', '+'),
-            ('5', 'Recebimento Empr.', 'Income', '+'),
-            ('6', 'Vendas', 'Income', '+'),
-            ('7', 'Recebimento TED', 'Income', '+'),
-            ('8', 'Recebimento DOC', 'Income', '+'),
-            ('9', 'Aluguel', 'Expense', '-')
+            ('3', 'Financing', 'Expense', '-'),
+            ('4', 'Credit', 'Income', '+'),
+            ('5', 'Loan Receipt', 'Income', '+'),
+            ('6', 'Sales', 'Income', '+'),
+            ('7', 'TED Receipt', 'Income', '+'),
+            ('8', 'DOC Receipt', 'Income', '+'),
+            ('9', 'Rent', 'Expense', '-')
             ON CONFLICT (type_code) DO NOTHING;
         ");
 

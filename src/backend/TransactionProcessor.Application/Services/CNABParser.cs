@@ -152,11 +152,14 @@ public class CNABParser : ICNABParser
             }
             data.Time = time;
 
-            // Store Owner (14 chars, positions 48-61) - extract only, validation in CNABValidator
+            // Store Owner (14 chars, positions 48-61, indices 48-61) - extract only, validation in CNABValidator
             data.StoreOwner = line.Substring(48, 14).Trim();
 
-            // Store Name (19 chars, positions 62-80) - extract only, validation in CNABValidator
-            data.StoreName = line.Substring(62, 19).Trim();
+            // Store Name (18 chars, positions 63-80, indices 62-79) - extract only, validation in CNABValidator
+            // Note: Spec says positions 63-81 (19 chars), but line is 80 chars (indices 0-79)
+            // So we can only extract 18 chars from index 62 to end (indices 62-79)
+            // This matches: Type(1) + Date(8) + Amount(10) + CPF(11) + Card(12) + Time(6) + StoreOwner(14) + StoreName(18) = 80
+            data.StoreName = line.Length > 62 ? line.Substring(62).Trim() : string.Empty;
 
             // Try to calculate signed amount to ensure type is valid for that operation
             // This will throw if Type is invalid, which is caught below

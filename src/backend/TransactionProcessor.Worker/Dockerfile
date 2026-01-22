@@ -14,18 +14,17 @@ WORKDIR /src
 COPY TransactionProcessor.Domain/TransactionProcessor.Domain.csproj TransactionProcessor.Domain/
 COPY TransactionProcessor.Application/TransactionProcessor.Application.csproj TransactionProcessor.Application/
 COPY TransactionProcessor.Infrastructure/TransactionProcessor.Infrastructure.csproj TransactionProcessor.Infrastructure/
-COPY TransactionProcessor.Api/TransactionProcessor.Api.csproj TransactionProcessor.Api/
 COPY TransactionProcessor.Worker/TransactionProcessor.Worker.csproj TransactionProcessor.Worker/
 
 # Restore dependencies (cached layer)
-RUN dotnet restore TransactionProcessor.Api/TransactionProcessor.Api.csproj
+RUN dotnet restore TransactionProcessor.Worker/TransactionProcessor.Worker.csproj
 
 # Copy source code AFTER restore for better cache hits
 COPY . .
 
 # Build and publish
-WORKDIR /src/TransactionProcessor.Api
-RUN dotnet publish TransactionProcessor.Api.csproj \
+WORKDIR /src/TransactionProcessor.Worker
+RUN dotnet publish TransactionProcessor.Worker.csproj \
     -c ${BUILD_CONFIGURATION} \
     -o /app/publish \
     /p:UseAppHost=false \
@@ -50,9 +49,10 @@ COPY --from=build /app/publish .
 RUN chown -R appuser:appuser /app
 USER appuser
 
-ENV ASPNETCORE_URLS=http://+:5000
-EXPOSE 5000
+ENV ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}
+EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -f http://localhost:5000/api/health || exit 1
+# Health check - worker doesn't have HTTP endpoint, so we just check if process is running
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD pgrep -f "TransactionProcessor.Worker.dll" || exit 1
 
-ENTRYPOINT ["dotnet", "TransactionProcessor.Api.dll"]
+ENTRYPOINT ["dotnet", "TransactionProcessor.Worker.dll"]

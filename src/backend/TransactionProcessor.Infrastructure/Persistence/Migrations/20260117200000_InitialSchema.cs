@@ -217,33 +217,42 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
                 columns: new[] { "StoreId", "transaction_date" });
 
             // Seed transaction types (CNAB types 1-9)
+            // According to challenge requirements:
+            // Type 1: Debit, Income, +
+            // Type 2: Boleto, Expense, -
+            // Type 3: Financing, Expense, -
+            // Type 4: Credit, Income, +
+            // Type 5: Loan Receipt, Income, +
+            // Type 6: Sales, Income, +
+            // Type 7: TED Receipt, Income, +
+            // Type 8: DOC Receipt, Income, +
+            // Type 9: Rent, Expense, -
             migrationBuilder.InsertData(
                 table: "transaction_types",
                 columns: new[] { "type_code", "Description", "Nature", "Sign" },
                 values: new object[,]
                 {
-                    { "1", "Débito", "Expense", "-" },
-                    { "2", "Boleto", "Income", "+" },
-                    { "3", "Financiamento", "Income", "+" },
-                    { "4", "Crédito", "Expense", "-" },
-                    { "5", "Recebimento Empr.", "Expense", "-" },
-                    { "6", "Vendas", "Expense", "-" },
-                    { "7", "Recebimento TED", "Expense", "-" },
-                    { "8", "Recebimento DOC", "Expense", "-" },
-                    { "9", "Aluguel", "Income", "+" }
+                    { "1", "Debit", "Income", "+" },
+                    { "2", "Boleto", "Expense", "-" },
+                    { "3", "Financing", "Expense", "-" },
+                    { "4", "Credit", "Income", "+" },
+                    { "5", "Loan Receipt", "Income", "+" },
+                    { "6", "Sales", "Income", "+" },
+                    { "7", "TED Receipt", "Income", "+" },
+                    { "8", "DOC Receipt", "Income", "+" },
+                    { "9", "Rent", "Expense", "-" }
                 });
 
             // Seed file statuses
-            migrationBuilder.InsertData(
-                table: "file_statuses",
-                columns: new[] { "status_code", "Description", "is_terminal" },
-                values: new object[,]
-                {
-                    { "Uploaded", "File uploaded, awaiting processing", false },
-                    { "Processing", "File currently being processed", false },
-                    { "Processed", "File successfully processed", true },
-                    { "Rejected", "File rejected due to validation or processing errors", true }
-                });
+            // Using raw SQL to avoid EF Core property mapping issues with snake_case column names
+            migrationBuilder.Sql(@"
+                INSERT INTO file_statuses (status_code, ""Description"", is_terminal) VALUES
+                ('Uploaded', 'File uploaded, awaiting processing', false),
+                ('Processing', 'File currently being processed', false),
+                ('Processed', 'File successfully processed', true),
+                ('Rejected', 'File rejected due to validation or processing errors', true)
+                ON CONFLICT (status_code) DO NOTHING;
+            ");
         }
 
         /// <inheritdoc />

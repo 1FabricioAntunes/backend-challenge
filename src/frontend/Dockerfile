@@ -22,10 +22,19 @@ COPY package*.json ./
 # Conditionally install devDependencies based on NODE_ENV
 # Note: devDependencies (typescript, vite) are required for the build step
 # If NODE_ENV != production (e.g., development), include dev deps; otherwise skip them
-RUN if [ "$NODE_ENV" != "production" ]; then \
-        npm ci --ignore-scripts; \
+# Use npm ci if package-lock.json exists, otherwise use npm install
+RUN if [ -f package-lock.json ]; then \
+        if [ "$NODE_ENV" != "production" ]; then \
+            npm ci --ignore-scripts; \
+        else \
+            npm ci --only=production --ignore-scripts; \
+        fi; \
     else \
-        npm ci --only=production --ignore-scripts; \
+        if [ "$NODE_ENV" != "production" ]; then \
+            npm install --ignore-scripts; \
+        else \
+            npm install --only=production --ignore-scripts; \
+        fi; \
     fi
 
 # Copy source code AFTER dependency installation

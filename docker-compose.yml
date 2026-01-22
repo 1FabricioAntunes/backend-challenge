@@ -130,7 +130,42 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 60s
+    networks:
+      - transactionprocessor-network
+
+  # Background Worker (.NET) - Processes files from SQS queue
+  worker:
+    build:
+      context: ./src/backend
+      dockerfile: TransactionProcessor.Worker/Dockerfile
+    image: transactionprocessor-worker:local
+    container_name: transactionprocessor-worker
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Connection string MUST come from Secrets Manager (LocalStack in dev, AWS in prod)
+      # See: docs/security.md § Secrets Management
+      AWS__Region: us-east-1
+      AWS__SecretsManager__ServiceURL: http://localstack:4566
+      AWS__S3__ServiceURL: http://localstack:4566
+      AWS__SQS__ServiceURL: http://localstack:4566
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     networks:
       - transactionprocessor-network
 
@@ -153,10 +188,19 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=5m'
+      - '--web.enable-lifecycle'  # Enable reload endpoint for configuration updates
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-admin-api'  # Enable admin API endpoints
     environment:
       - TZ=UTC
     depends_on:
+      # Wait for API to be healthy before starting Prometheus
+      # This ensures the metrics endpoint is available when Prometheus starts scraping
       api:
+        condition: service_healthy
+      # Also wait for database to ensure API can fully initialize
+      db:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -168,11 +212,14 @@ services:
           cpus: '1.0'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      # Use wget --spider for health check (more reliable than -qO-)
+      # --spider only checks HTTP headers without downloading body
+      # --quiet suppresses output, --tries=1 prevents retries in wget itself
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s  # Give Prometheus more time to start up
     networks:
       - transactionprocessor-network
 
@@ -197,8 +244,11 @@ services:
       # Persist Grafana data
       - grafana-data:/var/lib/grafana
     depends_on:
+      # Use service_started instead of service_healthy to avoid blocking on Prometheus health check
+      # Grafana can work even if Prometheus health check is temporarily failing
+      # Prometheus will still be monitored via its health check, but won't block Grafana startup
       prometheus:
-        condition: service_healthy
+        condition: service_started
     security_opt:
       - no-new-privileges:true
     cap_drop:

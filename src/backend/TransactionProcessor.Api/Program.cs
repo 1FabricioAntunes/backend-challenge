@@ -14,6 +14,7 @@ using TransactionProcessor.Api.Extensions;
 using TransactionProcessor.Api.Middleware;
 using TransactionProcessor.Api.Models;
 using Amazon;
+using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.SQS;
 using TransactionProcessor.Application.Queries.Files;
@@ -80,9 +81,17 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // DEPENDENCY INJECTION
 // ============================================================================
 // Register AWS S3 client (supports LocalStack for development)
-var s3ServiceUrl = builder.Configuration["AWS:S3:ServiceUrl"];
-var sqsServiceUrl = builder.Configuration["AWS:SQS:ServiceUrl"];
+// Try multiple configuration key formats to handle environment variable variations
+var s3ServiceUrl = builder.Configuration["AWS:S3:ServiceUrl"] 
+    ?? builder.Configuration["AWS:S3:ServiceURL"]
+    ?? builder.Configuration["AWS__S3__ServiceURL"]; // Direct env var format
+var sqsServiceUrl = builder.Configuration["AWS:SQS:ServiceUrl"] 
+    ?? builder.Configuration["AWS:SQS:ServiceURL"]
+    ?? builder.Configuration["AWS__SQS__ServiceURL"]; // Direct env var format
 var awsRegion = builder.Configuration["AWS:Region"] ?? "us-east-1";
+
+Log.Information("AWS Configuration - S3 ServiceURL: {S3ServiceUrl}, SQS ServiceURL: {SQSServiceUrl}, Region: {Region}", 
+    s3ServiceUrl ?? "null", sqsServiceUrl ?? "null", awsRegion);
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
@@ -92,12 +101,22 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     };
     
     // Configure for LocalStack if service URL is provided
+    // ALWAYS use BasicAWSCredentials when ServiceURL is set (LocalStack mode)
     if (!string.IsNullOrEmpty(s3ServiceUrl))
     {
         config.ServiceURL = s3ServiceUrl;
         config.ForcePathStyle = true; // Required for LocalStack
+        
+        // LocalStack requires dummy credentials (doesn't validate them)
+        // Use BasicAWSCredentials to avoid EC2 metadata service lookup
+        // This is REQUIRED - without explicit credentials, AWS SDK tries EC2 metadata service
+        var credentials = new BasicAWSCredentials("test", "test");
+        Log.Information("Configuring S3 client for LocalStack: ServiceURL={ServiceURL}, Using BasicAWSCredentials", s3ServiceUrl);
+        return new AmazonS3Client(credentials, config);
     }
     
+    // Production: Use default credential chain (IAM roles, env vars, etc.)
+    Log.Information("Configuring S3 client for AWS: Using default credential chain");
     return new AmazonS3Client(config);
 });
 
@@ -110,11 +129,21 @@ builder.Services.AddSingleton<IAmazonSQS>(sp =>
     };
     
     // Configure for LocalStack if service URL is provided
+    // ALWAYS use BasicAWSCredentials when ServiceURL is set (LocalStack mode)
     if (!string.IsNullOrEmpty(sqsServiceUrl))
     {
         config.ServiceURL = sqsServiceUrl;
+        
+        // LocalStack requires dummy credentials (doesn't validate them)
+        // Use BasicAWSCredentials to avoid EC2 metadata service lookup
+        // This is REQUIRED - without explicit credentials, AWS SDK tries EC2 metadata service
+        var credentials = new BasicAWSCredentials("test", "test");
+        Log.Information("Configuring SQS client for LocalStack: ServiceURL={ServiceURL}, Using BasicAWSCredentials", sqsServiceUrl);
+        return new AmazonSQSClient(credentials, config);
     }
     
+    // Production: Use default credential chain (IAM roles, env vars, etc.)
+    Log.Information("Configuring SQS client for AWS: Using default credential chain");
     return new AmazonSQSClient(config);
 });
 
@@ -132,7 +161,17 @@ builder.Services.AddScoped<ICNABValidator, CNABValidator>();
 
 // Register infrastructure services
 builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
-builder.Services.AddScoped<IMessageQueueService, SQSMessageQueueService>();
+
+// Register SQS Message Queue Service with explicit AwsSqsSecrets injection
+// The secrets are already loaded and registered as singleton in AddSecretsManagementAndGetSecrets
+builder.Services.AddScoped<IMessageQueueService>(sp =>
+{
+    var sqsClient = sp.GetRequiredService<IAmazonSQS>();
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var sqsSecrets = sp.GetService<TransactionProcessor.Infrastructure.Secrets.AwsSqsSecrets>(); // Optional, may be null
+    var logger = sp.GetRequiredService<ILogger<SQSMessageQueueService>>();
+    return new SQSMessageQueueService(sqsClient, configuration, sqsSecrets, logger);
+});
 
 // Register mock Cognito service for development (when LocalStack Cognito unavailable)
 var isDevelopment = builder.Environment.IsDevelopment();
@@ -469,6 +508,31 @@ Log.Information("OpenAPI specification available at /swagger/v1.json");
 // ============================================================================
 Log.Information("TransactionProcessor API initialized successfully");
 Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
+
+// ============================================================================
+// DATABASE MIGRATION
+// ============================================================================
+// Run database migrations on startup to ensure schema is up-to-date
+// This ensures the database is ready before the API starts accepting requests
+Log.Information("[{CorrelationId}] Running database migrations...", startupCorrelationId);
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        dbContext.Database.Migrate();
+        Log.Information("[{CorrelationId}] Database migrations applied successfully", startupCorrelationId);
+    }
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "[{CorrelationId}] Failed to apply database migrations", startupCorrelationId);
+    Log.Fatal("[{CorrelationId}] Migration error details: {Error}", startupCorrelationId, ex.Message);
+    // Fail fast - API cannot run without a properly migrated database
+    // This will cause the container to restart, allowing for retry
+    throw;
+}
+
 Log.Information("API will be available at: https://localhost:5001");
 
 try

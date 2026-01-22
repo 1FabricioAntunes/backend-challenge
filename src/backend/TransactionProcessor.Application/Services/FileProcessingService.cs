@@ -195,15 +195,25 @@ public class FileProcessingService : IFileProcessingService
                 var storeOwnerName = storeLines.First().StoreOwner.Trim();
 
                 // Get or create store using composite key (Name, OwnerName)
-                var store = await _storeRepository.GetByNameAndOwnerAsync(storeName, storeOwnerName);
-                if (store == null)
+                // Check once and reuse the result to avoid entity tracking conflicts
+                var storeKey = $"{storeName}|{storeOwnerName}";
+                Store? store;
+                
+                if (!stores.TryGetValue(storeKey, out store) || store == null)
                 {
-                    // Create new store using constructor for immutable Id
-                    store = new Store(
-                        id: Guid.NewGuid(),
-                        ownerName: storeOwnerName,
-                        name: storeName
-                    );
+                    // First time seeing this store in this file - check if it exists in DB
+                    store = await _storeRepository.GetByNameAndOwnerAsync(storeName, storeOwnerName);
+                    if (store == null)
+                    {
+                        // Create new store using constructor for immutable Id
+                        store = new Store(
+                            id: Guid.NewGuid(),
+                            ownerName: storeOwnerName,
+                            name: storeName
+                        );
+                    }
+                    // Store the result (either existing from DB or newly created) in dictionary
+                    stores[storeKey] = store;
                 }
 
                 // Create transactions - Balance is computed on-demand, not persisted
@@ -229,26 +239,31 @@ public class FileProcessingService : IFileProcessingService
                 }
 
                 store.UpdatedAt = DateTime.UtcNow;
-                var storeKey = $"{storeName}|{storeOwnerName}";
-                stores[storeKey] = store;
             }
 
-                // Upsert stores - Use conditional Add/Update since UpsertAsync doesn't exist
-                foreach (var store in stores.Values)
+            // Upsert stores - Handle entity tracking correctly
+            // Stores retrieved from DB use AsNoTracking, so we need to check if they're already tracked
+            // or attach them properly to avoid tracking conflicts
+            foreach (var store in stores.Values)
+            {
+                // Check if store already exists in database by querying the context directly
+                // Use FindAsync which returns a tracked entity if it exists, or null if not
+                var trackedStore = await _dbContext.Stores.FindAsync(new object[] { store.Id }, cancellationToken);
+                
+                if (trackedStore == null)
                 {
-                    var existingStore = await _storeRepository.GetByNameAndOwnerAsync(store.Name, store.OwnerName);
-                    if (existingStore == null)
-                    {
-                        await _storeRepository.AddAsync(store);
-                    }
-                    else
-                    {
-                        // Update existing store properties
-                        existingStore.UpdatedAt = DateTime.UtcNow;
-                        await _storeRepository.UpdateAsync(existingStore);
-                    }
-                    result.StoresUpserted++;
+                    // Store doesn't exist in DB - add it as new
+                    await _storeRepository.AddAsync(store);
                 }
+                else
+                {
+                    // Store exists in DB and is now tracked - update the tracked entity
+                    trackedStore.UpdatedAt = DateTime.UtcNow;
+                    // Update tracked entity properties if needed (Name/OwnerName shouldn't change)
+                    await _storeRepository.UpdateAsync(trackedStore);
+                }
+                result.StoresUpserted++;
+            }
 
                 // Insert transactions in batch
                 await _transactionRepository.AddRangeAsync(transactions);

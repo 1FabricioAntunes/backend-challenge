@@ -115,10 +115,12 @@ create_or_update_secret \
 echo "[secrets] Configuring AWS SQS secrets..."
 
 # Create SQS secrets as a JSON object
+# Use 'localstack' hostname for Docker container networking (not 'localhost')
+# Containers access LocalStack via the service name 'localstack' in docker-compose
 SQS_SECRETS=$(cat <<EOF
 {
-  "QueueUrl": "http://localhost:4566/000000000000/file-processing-queue",
-  "DlqUrl": "http://localhost:4566/000000000000/file-processing-dlq",
+  "QueueUrl": "http://localstack:4566/000000000000/file-processing-queue",
+  "DlqUrl": "http://localstack:4566/000000000000/file-processing-dlq",
   "Region": "us-east-1"
 }
 EOF
@@ -131,11 +133,11 @@ create_or_update_secret \
 # Also create individual secrets for backward compatibility
 create_or_update_secret \
   "TransactionProcessor/AWS/SQS/QueueUrl" \
-  "http://localhost:4566/000000000000/file-processing-queue"
+  "http://localstack:4566/000000000000/file-processing-queue"
 
 create_or_update_secret \
   "TransactionProcessor/AWS/SQS/DlqUrl" \
-  "http://localhost:4566/000000000000/file-processing-dlq"
+  "http://localstack:4566/000000000000/file-processing-dlq"
 
 create_or_update_secret \
   "TransactionProcessor/AWS/SQS/Region" \
