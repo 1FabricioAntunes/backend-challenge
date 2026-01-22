@@ -61,6 +61,7 @@ public class UploadFileEndpoint : Endpoint<UploadFileRequest, UploadFileResponse
     {
         Post("/api/files/v1");
         AllowFileUploads(); // Enable multipart/form-data
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
         
         Description(d => d
             .Produces<UploadFileResponse>(202, "application/json")

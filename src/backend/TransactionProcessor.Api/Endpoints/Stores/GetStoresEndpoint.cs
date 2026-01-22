@@ -32,6 +32,7 @@ public class GetStoresEndpoint : EndpointWithoutRequest<List<StoreDto>>
     public override void Configure()
     {
         Get("/api/stores/v1");
+        DontAutoTag(); // Prevent auto-tagging, use explicit tag only
         Description(d => d
             .Produces<List<StoreDto>>(200, "application/json")
             .WithTags("Stores")

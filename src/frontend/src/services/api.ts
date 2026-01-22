@@ -6,6 +6,26 @@ const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 /**
+ * SECURITY NOTE: Token Storage in localStorage
+ * 
+ * ⚠️ XSS Vulnerability: Tokens stored in localStorage are accessible to JavaScript,
+ * making them vulnerable to Cross-Site Scripting (XSS) attacks.
+ * 
+ * Current Implementation (Development/Demo):
+ * - Tokens retrieved from localStorage and injected into Authorization header
+ * - Suitable for development and demo purposes
+ * 
+ * Production Recommendation (per docs/security.md):
+ * - Use HttpOnly cookies for token storage (prevents JavaScript access)
+ * - Browser automatically sends cookies with requests
+ * - No need to manually inject Authorization header
+ * - Backend must set cookies with HttpOnly, Secure, and SameSite flags
+ * 
+ * See: docs/security.md - "Insecure Token Storage" section
+ * See: technical-decisions.md - "JWT Security Considerations" section
+ */
+
+/**
  * Generate a unique correlation ID for request tracking
  * Format: timestamp-random
  */
@@ -46,7 +66,7 @@ const clearAuthAndRedirect = (): void => {
  * Create Axios instance with base configuration
  */
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+  baseURL: import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -141,10 +161,14 @@ export const fileApi = {
    * GET /api/files/v1?page=1&pageSize=10
    */
   getFiles: async (page = 1, pageSize = 10): Promise<{ files: any[]; total: number }> => {
-    const response = await apiClient.get<{ files: any[]; total: number }>('/api/files/v1', {
+    const response = await apiClient.get<{ items: any[]; totalCount: number; page: number; pageSize: number }>('/api/files/v1', {
       params: { page, pageSize },
     });
-    return response.data;
+    // Map backend response format to frontend expected format
+    return {
+      files: response.data.items || [],
+      total: response.data.totalCount || 0,
+    };
   },
 
   /**
@@ -178,15 +202,33 @@ export const transactionApi = {
    */
   getTransactions: async (
     page = 1,
-    pageSize = 50
-  ): Promise<{ transactions: any[]; total: number }> => {
-    const response = await apiClient.get<{ transactions: any[]; total: number }>(
+    pageSize = 50,
+    storeId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<{ items: any[]; totalCount: number; page: number; pageSize: number }> => {
+    const params: Record<string, string | number> = { page, pageSize };
+    if (storeId) params.storeId = storeId;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    
+    const response = await apiClient.get<{ items: any[]; totalCount: number; page: number; pageSize: number }>(
       '/api/transactions/v1',
-      {
-        params: { page, pageSize },
-      }
+      { params }
     );
-    return response.data;
+    // Handle both response formats: direct data or nested in data property
+    const data = response.data as any;
+    // If response has items property, use it; otherwise assume it's the PagedResult directly
+    if (data.items) {
+      return data;
+    }
+    // Fallback: if response structure is different, try to extract items
+    return {
+      items: Array.isArray(data) ? data : (data.items || []),
+      totalCount: data.totalCount || data.total || 0,
+      page: data.page || page,
+      pageSize: data.pageSize || pageSize,
+    };
   },
 
   /**
@@ -207,9 +249,10 @@ export const storeApi = {
    * Get list of stores
    * GET /api/stores/v1
    */
-  getStores: async (): Promise<{ stores: any[] }> => {
-    const response = await apiClient.get<{ stores: any[] }>('/api/stores/v1');
-    return response.data;
+  getStores: async (): Promise<any[]> => {
+    const response = await apiClient.get<any[]>('/api/stores/v1');
+    // API returns array directly
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   /**
@@ -219,6 +262,99 @@ export const storeApi = {
   getStore: async (storeCode: string): Promise<any> => {
     const response = await apiClient.get(`/api/stores/v1/${storeCode}`);
     return response.data;
+  },
+};
+
+/**
+ * Authentication API endpoints
+ * 
+ * Note: For development/demo, this uses a simple login endpoint.
+ * In production with OAuth2/Cognito, the flow would redirect to Cognito
+ * for authentication and receive tokens via OAuth2 callback.
+ */
+export const authApi = {
+  /**
+   * Login with email and password
+   * POST /api/auth/v1/login
+   * 
+   * @param email - User email address
+   * @param password - User password
+   * @returns Promise with user info and JWT token
+   */
+  login: async (email: string, password: string): Promise<{ user: { name: string; email: string }; token: string }> => {
+    // Use a separate axios instance without auth interceptor for login
+    const loginClient = axios.create({
+      baseURL: import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
+    });
+
+    // Add correlation ID to login request
+    loginClient.interceptors.request.use((config) => {
+      config.headers['X-Correlation-ID'] = generateCorrelationId();
+      return config;
+    });
+
+    // Add response interceptor to extract API error messages
+    loginClient.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => {
+        // Extract error message from API response (matches backend ErrorResponse format)
+        // Backend returns: { error: { message: "...", code: "...", statusCode: 401 } }
+        const responseData = error.response?.data as any;
+        
+        // Check for structured error response from API
+        if (responseData && typeof responseData === 'object') {
+          if (responseData.error?.message) {
+            // API returned structured error - use the message from API
+            const apiError = new Error(responseData.error.message);
+            (apiError as any).code = responseData.error.code || 'API_ERROR';
+            (apiError as any).statusCode = responseData.error.statusCode || error.response?.status;
+            return Promise.reject(apiError);
+          }
+          
+          // Check if message is at root level (alternative format)
+          if (responseData.message) {
+            const apiError = new Error(responseData.message);
+            (apiError as any).code = responseData.code || 'API_ERROR';
+            (apiError as any).statusCode = error.response?.status;
+            return Promise.reject(apiError);
+          }
+        }
+        
+        // Fallback: For 401 errors, provide user-friendly message
+        if (error.response?.status === 401) {
+          const apiError = new Error('Invalid email or password.');
+          (apiError as any).code = 'AUTHENTICATION_FAILED';
+          (apiError as any).statusCode = 401;
+          return Promise.reject(apiError);
+        }
+        
+        // For other errors, provide generic message (never show raw Axios error)
+        const errorMessage = 'An error occurred during login. Please try again.';
+        const apiError = new Error(errorMessage);
+        (apiError as any).code = 'NETWORK_ERROR';
+        (apiError as any).statusCode = error.response?.status;
+        return Promise.reject(apiError);
+      }
+    );
+
+    const response = await loginClient.post<{ user: { name: string; email: string }; token: string }>(
+      '/api/auth/v1/login',
+      { email, password }
+    );
+    return response.data;
+  },
+
+  /**
+   * Logout (client-side only, clears token)
+   * In production, might call backend to invalidate token
+   */
+  logout: async (): Promise<void> => {
+    // Client-side logout handled by AuthContext
+    // In production, might call: POST /api/auth/v1/logout
   },
 };
 

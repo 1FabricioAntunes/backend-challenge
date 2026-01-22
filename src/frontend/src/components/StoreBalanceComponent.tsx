@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import axios from 'axios';
+import { AxiosError } from 'axios';
+import apiClient from '../services/api';
 
 // TypeScript Interfaces
 interface Store {
@@ -34,12 +35,12 @@ const StoreBalanceComponent = () => {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Format currency amount to Brazilian Real format (R$ X,XXX.XX)
+   * Format currency amount to US Dollar format ($X,XXX.XX)
    */
   const formatCurrency = useCallback((amount: number): string => {
-    return new Intl.NumberFormat('pt-BR', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'BRL',
+      currency: 'USD',
     }).format(amount);
   }, []);
 
@@ -107,28 +108,28 @@ const StoreBalanceComponent = () => {
   );
 
   /**
-   * Map API errors to user-friendly Portuguese messages
+   * Map API errors to user-friendly English messages
    */
   const mapErrorMessage = (error: unknown): string => {
-    if (axios.isAxiosError(error)) {
+    if (error instanceof AxiosError) {
       if (!error.response) {
-        return 'Erro de conexão. Verifique sua internet.';
+        return 'Connection error. Please check your internet connection.';
       }
 
       if (error.response.status === 500) {
-        return 'Erro no servidor. Tente novamente.';
+        return 'Server error. Please try again.';
       }
 
       if (error.response.status === 400) {
-        return 'Requisição inválida. Verifique os parâmetros.';
+        return 'Invalid request. Please check the parameters.';
       }
 
       if (error.response.status === 404) {
-        return 'Endpoint não encontrado.';
+        return 'Endpoint not found.';
       }
     }
 
-    return 'Erro ao carregar lojas. Tente novamente.';
+    return 'Error loading stores. Please try again.';
   };
 
   /**
@@ -140,7 +141,8 @@ const StoreBalanceComponent = () => {
     setError(null);
 
     try {
-      const response = await axios.get('/api/stores/v1');
+      // Use apiClient for consistent error handling, authentication, and API versioning
+      const response = await apiClient.get('/api/stores/v1');
       const { stores: apiStores } = response.data;
 
       setStores(apiStores);
@@ -186,7 +188,7 @@ const StoreBalanceComponent = () => {
         <div className="store-balance__title-group">
           <h1 className="store-balance__title">Saldo das Lojas</h1>
           <p className="store-balance__subtitle">
-            Consulte o saldo atualizado de todas as lojas
+            View updated balance for all stores
           </p>
         </div>
 
@@ -194,9 +196,9 @@ const StoreBalanceComponent = () => {
           className="store-balance__refresh-button"
           onClick={refreshBalances}
           disabled={isLoading}
-          title="Atualizar saldos"
+          title="Refresh balances"
         >
-          {isLoading ? '⟳ Atualizando...' : '↻ Atualizar'}
+          {isLoading ? '⟳ Refreshing...' : '↻ Refresh'}
         </button>
       </div>
 
@@ -206,7 +208,7 @@ const StoreBalanceComponent = () => {
           <input
             type="text"
             className="store-balance__search-input"
-            placeholder="Buscar por nome ou código..."
+            placeholder="Search by name or code..."
             value={searchText}
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               filterStores(e.target.value)
@@ -226,7 +228,7 @@ const StoreBalanceComponent = () => {
 
         <div className="store-balance__sort-group">
           <label className="store-balance__sort-label" htmlFor="sort-field">
-            Ordenar por:
+            Sort by:
           </label>
           <select
             id="sort-field"
@@ -240,12 +242,12 @@ const StoreBalanceComponent = () => {
               sortStores(field, order);
             }}
           >
-            <option value="name-asc">Nome (A-Z)</option>
-            <option value="name-desc">Nome (Z-A)</option>
-            <option value="code-asc">Código (↑)</option>
-            <option value="code-desc">Código (↓)</option>
-            <option value="balance-asc">Saldo (Menor)</option>
-            <option value="balance-desc">Saldo (Maior)</option>
+            <option value="name-asc">Name (A-Z)</option>
+            <option value="name-desc">Name (Z-A)</option>
+            <option value="code-asc">Code (↑)</option>
+            <option value="code-desc">Code (↓)</option>
+            <option value="balance-asc">Balance (Lowest)</option>
+            <option value="balance-desc">Balance (Highest)</option>
           </select>
         </div>
       </div>
@@ -262,7 +264,7 @@ const StoreBalanceComponent = () => {
       {isLoading && (
         <div className="store-balance__loading">
           <div className="store-balance__spinner"></div>
-          <p>Carregando saldos...</p>
+          <p>Loading balances...</p>
         </div>
       )}
 
@@ -271,8 +273,8 @@ const StoreBalanceComponent = () => {
         <div className="store-balance__empty">
           <p className="store-balance__empty-text">
             {searchText
-              ? 'Nenhuma loja encontrada com esse filtro'
-              : 'Nenhuma loja cadastrada'}
+              ? 'No stores found with this filter'
+              : 'No stores registered'}
           </p>
         </div>
       )}
@@ -281,7 +283,7 @@ const StoreBalanceComponent = () => {
       {!isLoading && hasStores && (
         <>
           <div className="store-balance__result-info">
-            Mostrando {filteredStores.length} de {stores.length} loja(s)
+            Showing {filteredStores.length} of {stores.length} store(s)
           </div>
 
           <div className="store-balance__table-wrapper">

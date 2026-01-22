@@ -17,7 +17,7 @@ interface SidebarProps {
  * - Accessible keyboard navigation
  * - Responsive design with mobile overlay
  */
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onToggle }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onToggle }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleMobileToggle = () => {
@@ -58,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onToggle }) =>
           <li>
             <NavLink
               to="/upload"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              className={({ isActive }: { isActive: boolean }) => `sidebar-link ${isActive ? 'active' : ''}`}
               onClick={handleLinkClick}
             >
               <span className="sidebar-icon" aria-hidden="true">⬆</span>
@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onToggle }) =>
           <li>
             <NavLink
               to="/transactions"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              className={({ isActive }: { isActive: boolean }) => `sidebar-link ${isActive ? 'active' : ''}`}
               onClick={handleLinkClick}
             >
               <span className="sidebar-icon" aria-hidden="true">📊</span>
@@ -91,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onToggle }) =>
           <li>
             <NavLink
               to="/files"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              className={({ isActive }: { isActive: boolean }) => `sidebar-link ${isActive ? 'active' : ''}`}
               onClick={handleLinkClick}
             >
               <span className="sidebar-icon" aria-hidden="true">📁</span>

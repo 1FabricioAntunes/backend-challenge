@@ -370,6 +370,81 @@ See [Authentication Issues](#authentication-issues) section below.
    pnpm build
    ```
 
+## Prometheus Issues
+
+### Prometheus Container Unhealthy
+
+**Symptoms:**
+- Error: "Container is unhealthy" when starting Prometheus
+- Grafana fails to start because it depends on Prometheus
+- Prometheus health check fails repeatedly
+
+**Solutions:**
+
+1. **Check Prometheus logs**:
+   ```bash
+   docker logs prometheus
+   docker-compose logs prometheus
+   ```
+
+2. **Verify Prometheus configuration file**:
+   ```bash
+   # Check if config file exists and is valid
+   docker exec prometheus promtool check config /etc/prometheus/prometheus.yml
+   ```
+
+3. **Test Prometheus health endpoint manually**:
+   ```bash
+   # From inside the container
+   docker exec prometheus wget --quiet --tries=1 --spider http://localhost:9090/-/healthy
+   
+   # From host
+   curl http://localhost:9090/-/healthy
+   ```
+
+4. **Check if Prometheus is actually running**:
+   ```bash
+   docker ps | grep prometheus
+   docker exec prometheus ps aux | grep prometheus
+   ```
+
+5. **Verify API metrics endpoint is accessible**:
+   ```bash
+   # Prometheus needs to scrape the API, ensure it's reachable
+   docker exec prometheus wget --quiet --tries=1 --spider http://api:5000/api/metrics
+   ```
+
+6. **Restart Prometheus with clean state**:
+   ```bash
+   docker-compose stop prometheus
+   docker volume rm transactionprocessor_prometheus-data  # Remove old data
+   docker-compose up -d prometheus
+   ```
+
+7. **Increase startup time** (if Prometheus needs more time):
+   - The health check has a `start_period: 40s` to allow Prometheus to fully start
+   - If this is insufficient, you can temporarily increase it in `docker-compose.yml`
+
+8. **Check resource limits**:
+   ```bash
+   # Prometheus might be OOM killed
+   docker stats prometheus
+   # If memory usage is high, increase memory limit in docker-compose.yml
+   ```
+
+**Common Causes:**
+- Invalid Prometheus configuration file
+- API metrics endpoint not accessible from Prometheus container
+- Insufficient startup time (health check runs too early)
+- Resource constraints (memory/CPU limits too low)
+- Corrupted Prometheus data directory
+
+**Prevention:**
+- The health check uses `wget --spider` which is more reliable than downloading content
+- Grafana uses `service_started` instead of `service_healthy` to avoid blocking
+- Prometheus has a 40-second startup grace period before health checks begin
+- Configuration validation happens automatically on startup
+
 ## Docker Issues
 
 ### Docker Compose Fails to Start

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using TransactionProcessor.Application.Models;
 
@@ -43,12 +44,15 @@ public class CNABParser : ICNABParser
 
         try
         {
-            using (var reader = new StreamReader(fileStream, Encoding.ASCII))
+            // Read as UTF-8 to handle files with accented characters, then normalize to ASCII
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, leaveOpen: true))
             {
                 string? line;
                 while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
                 {
-                    lines.Add(line);
+                    // Normalize UTF-8 accented characters to ASCII (e.g., "JOÃO" -> "JOAO")
+                    string normalizedLine = NormalizeToAscii(line);
+                    lines.Add(normalizedLine);
                 }
             }
         }
@@ -148,11 +152,14 @@ public class CNABParser : ICNABParser
             }
             data.Time = time;
 
-            // Store Owner (14 chars, positions 48-61) - extract only, validation in CNABValidator
+            // Store Owner (14 chars, positions 48-61, indices 48-61) - extract only, validation in CNABValidator
             data.StoreOwner = line.Substring(48, 14).Trim();
 
-            // Store Name (19 chars, positions 62-80) - extract only, validation in CNABValidator
-            data.StoreName = line.Substring(62, 19).Trim();
+            // Store Name (18 chars, positions 63-80, indices 62-79) - extract only, validation in CNABValidator
+            // Note: Spec says positions 63-81 (19 chars), but line is 80 chars (indices 0-79)
+            // So we can only extract 18 chars from index 62 to end (indices 62-79)
+            // This matches: Type(1) + Date(8) + Amount(10) + CPF(11) + Card(12) + Time(6) + StoreOwner(14) + StoreName(18) = 80
+            data.StoreName = line.Length > 62 ? line.Substring(62).Trim() : string.Empty;
 
             // Try to calculate signed amount to ensure type is valid for that operation
             // This will throw if Type is invalid, which is caught below
@@ -223,5 +230,45 @@ public class CNABParser : ICNABParser
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Normalize UTF-8 string to ASCII by removing diacritics from accented characters.
+    /// Example: "JOÃO" -> "JOAO", "São Paulo" -> "Sao Paulo"
+    /// This allows files with UTF-8 encoded accented characters to be processed as ASCII.
+    /// </summary>
+    /// <param name="input">Input string that may contain UTF-8 accented characters</param>
+    /// <returns>ASCII-normalized string</returns>
+    private static string NormalizeToAscii(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Normalize to NFD (decomposed form) which separates base characters from diacritics
+        // Then remove diacritics and convert to ASCII
+        var normalized = input.Normalize(NormalizationForm.FormD);
+        var stringBuilder = new StringBuilder();
+
+        foreach (var c in normalized)
+        {
+            var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+            // Keep only base characters (not combining marks/diacritics)
+            if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+            {
+                // Convert to ASCII - characters <= 127 are already ASCII
+                if (c <= 127)
+                {
+                    stringBuilder.Append(c);
+                }
+                else
+                {
+                    // For characters outside ASCII after normalization, replace with space
+                    // This handles any remaining special characters
+                    stringBuilder.Append(' ');
+                }
+            }
+        }
+
+        return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
     }
 }

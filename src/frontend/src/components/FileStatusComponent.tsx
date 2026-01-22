@@ -134,7 +134,7 @@ export default function FileStatusComponent() {
       }
     } catch (err) {
       console.error('[file-status] polling failed', err);
-      setError('Não foi possível atualizar o status. Tentaremos novamente em instantes.');
+      setError('Unable to update status. Will try again shortly.');
 
       setBackoffStep((currentStep) => {
         const nextStep = Math.min(currentStep + 1, POLLING_DELAYS_MS.length - 1);
@@ -227,7 +227,7 @@ export default function FileStatusComponent() {
 
   const formatTime = (value: string | null) => {
     if (!value) return '—';
-    return new Date(value).toLocaleTimeString('pt-BR', {
+    return new Date(value).toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -239,19 +239,19 @@ export default function FileStatusComponent() {
     <section className="file-status">
       <header className="file-status__header">
         <div>
-          <p className="file-status__eyebrow">Monitoramento</p>
-          <h2 className="file-status__title">Status de Processamento</h2>
+          <p className="file-status__eyebrow">Monitoring</p>
+          <h2 className="file-status__title">Processing Status</h2>
           <p className="file-status__subtitle">
-            Acompanhe arquivos enviados, estados de processamento e detalhes de falhas.
+            Track uploaded files, processing states and failure details.
           </p>
         </div>
         <div className="file-status__actions">
-          <button className="file-status__button" onClick={handleManualRefresh} aria-label="Atualizar status">
-            Atualizar lista
+          <button className="file-status__button" onClick={handleManualRefresh} aria-label="Refresh status">
+            Refresh list
           </button>
           <span className={`polling-indicator ${isPolling ? 'polling-indicator--on' : ''}`}>
-            {isRefreshing && <span className="spinner" role="status" aria-label="Atualizando" />}
-            {isPolling ? 'Polling ativo' : 'Polling inativo'} · Última atualização: {formatTime(lastCheckedTime)}
+            {isRefreshing && <span className="spinner" role="status" aria-label="Refreshing" />}
+            {isPolling ? 'Polling active' : 'Polling inactive'} · Last update: {formatTime(lastCheckedTime)}
           </span>
         </div>
       </header>
@@ -264,10 +264,10 @@ export default function FileStatusComponent() {
               className="file-status__button file-status__button--secondary"
               onClick={() => setError(null)}
             >
-              Dispensar
+              Dismiss
             </button>
             <button className="file-status__button" onClick={handleManualRefresh}>
-              Tentar novamente
+              Try again
             </button>
           </div>
         </div>
@@ -276,31 +276,31 @@ export default function FileStatusComponent() {
       <div className="file-status__layout">
         <div className="file-status__table-card">
           <div className="table__meta">
-            <p className="table__meta-count">{sortedFiles.length} arquivos</p>
-            <p className="table__meta-note">Ordenados por mais recente</p>
+            <p className="table__meta-count">{sortedFiles.length} files</p>
+            <p className="table__meta-note">Sorted by most recent</p>
           </div>
 
-          <div className="table__wrapper" role="table" aria-label="Status dos arquivos">
+          <div className="table__wrapper" role="table" aria-label="File status">
             <div className="table__row table__row--head" role="row">
               <div className="table__cell table__cell--head" role="columnheader">
-                Arquivo
+                File
               </div>
               <div className="table__cell table__cell--head" role="columnheader">
-                Enviado em
+                Uploaded at
               </div>
               <div className="table__cell table__cell--head" role="columnheader">
                 Status
               </div>
               <div className="table__cell table__cell--head table__cell--right" role="columnheader">
-                Transações
+                Transactions
               </div>
             </div>
 
             {sortedFiles.length === 0 && (
               <div className="empty-state" role="status">
-                <p>Nenhum arquivo encontrado.</p>
+                <p>No files found.</p>
                 <button className="file-status__button" onClick={handleManualRefresh}>
-                  Atualizar
+                  Refresh
                 </button>
               </div>
             )}
@@ -346,7 +346,7 @@ export default function FileStatusComponent() {
             />
           ) : (
             <div className="detail-placeholder">
-              <p>Selecione um arquivo para ver detalhes.</p>
+              <p>Select a file to view details.</p>
             </div>
           )}
         </aside>

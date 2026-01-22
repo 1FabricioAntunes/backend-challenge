@@ -48,7 +48,7 @@ public class MetricsMiddleware
             // Record request metrics
             MetricsService.RecordHttpRequest(method, normalizedEndpoint, statusCode);
             MetricsService.HttpRequestDurationSeconds
-                .WithLabels(method, normalizedEndpoint)
+                .WithLabels(method, normalizedEndpoint, statusCode)
                 .Observe(stopwatch.Elapsed.TotalSeconds);
 
             _logger.LogDebug(
@@ -58,11 +58,12 @@ public class MetricsMiddleware
         catch (Exception ex)
         {
             stopwatch.Stop();
+            var statusCode = context.Response.StatusCode.ToString();
             
             // Record error metrics
             MetricsService.RecordError("http_exception");
             MetricsService.HttpRequestDurationSeconds
-                .WithLabels(method, normalizedEndpoint)
+                .WithLabels(method, normalizedEndpoint, statusCode)
                 .Observe(stopwatch.Elapsed.TotalSeconds);
 
             _logger.LogError(

@@ -167,9 +167,6 @@ namespace TransactionProcessor.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<decimal>("Balance")
-                        .HasColumnType("numeric");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -241,9 +238,6 @@ namespace TransactionProcessor.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("transaction_type_code");
 
-                    b.Property<string>("TransactionTypeTypeCode")
-                        .HasColumnType("character varying(10)");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -258,7 +252,7 @@ namespace TransactionProcessor.Infrastructure.Persistence.Migrations
                     b.HasIndex("TransactionDate")
                         .HasDatabaseName("idx_transactions_date");
 
-                    b.HasIndex("TransactionTypeTypeCode");
+                    b.HasIndex("TransactionTypeCode");
 
                     b.HasIndex("StoreId", "TransactionDate")
                         .HasDatabaseName("idx_transactions_store_date");
@@ -326,7 +320,10 @@ namespace TransactionProcessor.Infrastructure.Persistence.Migrations
 
                     b.HasOne("TransactionProcessor.Domain.Entities.TransactionType", "TransactionType")
                         .WithMany()
-                        .HasForeignKey("TransactionTypeTypeCode");
+                        .HasForeignKey("TransactionTypeCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transactions_types");
 
                     b.Navigation("File");
 

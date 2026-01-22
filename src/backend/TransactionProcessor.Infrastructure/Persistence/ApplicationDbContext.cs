@@ -150,6 +150,16 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("fk_transactions_stores");
 
+            // Foreign Key: Transaction belongs to TransactionType (restrict delete)
+            // Note: TransactionTypeCode is the FK column (string), TypeCode is the PK on TransactionType (string)
+            // The relationship uses TransactionTypeCode -> TypeCode (both are strings)
+            entity.HasOne(e => e.TransactionType)
+                .WithMany()
+                .HasForeignKey(e => e.TransactionTypeCode)
+                .HasPrincipalKey(t => t.TypeCode)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_transactions_types");
+
             // Indexes for query performance (aligned with docs/database.md)
             entity.HasIndex(e => e.FileId).HasDatabaseName("idx_transactions_file_id");
             entity.HasIndex(e => e.StoreId).HasDatabaseName("idx_transactions_store_id");

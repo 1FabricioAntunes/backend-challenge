@@ -164,23 +164,31 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 return result;
             }
 
-            // Step 3: Create File aggregate
+            // Step 3: Generate S3Key before creating File aggregate
+            // S3Key is required in database, so we generate it upfront using the same format as S3FileStorageService
+            var s3Key = $"cnab/{fileId:D}/{sanitizedFileName}";
+            _logger.LogInformation("Generated S3Key: {S3Key}", s3Key);
+
+            // Step 4: Create File aggregate with S3Key
             _logger.LogInformation("Creating File aggregate with status=Uploaded");
             var file = new FileEntity(fileId, sanitizedFileName)
             {
                 FileSize = command.FileSize,
+                S3Key = s3Key,
                 UploadedByUserId = command.UploadedByUserId,
                 UploadedAt = DateTime.UtcNow
             };
 
-            // Step 4: Persist File entity to database (minimal transaction scope)
+            // Step 5: Persist File entity to database (minimal transaction scope)
             _logger.LogInformation("Persisting File entity to database");
             
             using (var dbTransaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
             {
                 try
                 {
-                    await _fileRepository.AddAsync(file);
+                    // Add file to context but don't save yet (repository AddAsync would save)
+                    // We'll save within the transaction
+                    _dbContext.Files.Add(file);
                     await _dbContext.SaveChangesAsync(cancellationToken);
                     await dbTransaction.CommitAsync(cancellationToken);
                     _logger.LogInformation("File entity persisted successfully");
@@ -188,13 +196,17 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 catch (Exception ex)
                 {
                     await dbTransaction.RollbackAsync(cancellationToken);
-                    _logger.LogError(ex, "Database transaction failed while persisting File entity");
+                    _logger.LogError(ex, "Database transaction failed while persisting File entity. Inner exception: {InnerException}", ex.InnerException?.Message ?? "None");
                     
                     result.Success = false;
                     result.FileId = null;
                     result.Status = "Rejected";
                     result.Message = "Failed to save file metadata to database.";
                     result.ErrorDetails.Add(ex.Message);
+                    if (ex.InnerException != null)
+                    {
+                        result.ErrorDetails.Add($"Inner exception: {ex.InnerException.Message}");
+                    }
                     
                     stopwatch.Stop();
                     _logger.LogInformation("Metrics: durationMs={DurationMs}, dbError=true", stopwatch.ElapsedMilliseconds);
@@ -202,7 +214,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 }
             }
 
-            // Step 5: Upload file to S3
+            // Step 6: Upload file to S3
             _logger.LogInformation("Uploading file to S3");
             
             // Reset stream position for S3 upload
@@ -211,30 +223,35 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 command.FileStream.Seek(0, SeekOrigin.Begin);
             }
 
-            string s3Key;
             try
             {
-                s3Key = await _storageService.UploadAsync(
+                // Upload to S3 using the pre-generated S3Key
+                await _storageService.UploadAsync(
                     command.FileStream,
                     sanitizedFileName,
                     fileId,
                     cancellationToken);
                 
                 _logger.LogInformation("File uploaded to S3 successfully. S3Key: {S3Key}", s3Key);
-
-                // Update file with S3 key
-                file.S3Key = s3Key;
-                await _fileRepository.UpdateAsync(file);
-                await _dbContext.SaveChangesAsync(cancellationToken);
             }
             catch (StorageException ex)
             {
                 _logger.LogError(ex, "S3 upload failed for file {FileId}", fileId);
                 
-                // Mark file as rejected
-                file.MarkAsRejected($"File storage failed: {ex.Message}");
-                await _fileRepository.UpdateAsync(file);
-                await _dbContext.SaveChangesAsync(cancellationToken);
+                // Mark file as rejected and update in database
+                // Use the same DbContext to avoid transaction issues
+                try
+                {
+                    file.MarkAsRejected($"File storage failed: {ex.Message}");
+                    _dbContext.Files.Update(file);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("File marked as rejected in database after S3 failure");
+                }
+                catch (Exception dbEx)
+                {
+                    _logger.LogError(dbEx, "Failed to update file status to Rejected after S3 failure. FileId: {FileId}", fileId);
+                    // Continue - we'll still return the S3 error
+                }
 
                 result.Success = false;
                 result.FileId = fileId;
@@ -247,7 +264,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 throw; // Re-throw for API to handle as 500
             }
 
-            // Step 6: Publish message to SQS
+            // Step 7: Publish message to SQS
             _logger.LogInformation("Publishing file processing message to SQS");
             
             try
@@ -276,7 +293,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Uploa
                 // The SQS message can be republished or the file can be picked up by the worker
             }
 
-            // Step 7: Return success result
+            // Step 8: Return success result
             stopwatch.Stop();
 
             result.Success = true;

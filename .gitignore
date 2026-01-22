@@ -40,8 +40,16 @@ src/backend/TransactionProcessor.Application/obj/*
 .vs/
 .idea/
 
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
 # Logs
 *.log
+**/logs/
 
 # Packages
 *.nupkg
@@ -66,3 +74,10 @@ _ReSharper*/
 *.bak
 *.tmp
 ~$*
+CNAB.txt
+
+# Secrets - NEVER commit secrets
+secrets/
+*.secret
+*.key
+db_password.txt
