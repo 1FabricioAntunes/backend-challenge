@@ -218,6 +218,7 @@ public class Transaction
     /// Used by the ORM for deserialization from database.
     /// Business logic should use the explicit constructor above.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
     public Transaction()
     {
     }

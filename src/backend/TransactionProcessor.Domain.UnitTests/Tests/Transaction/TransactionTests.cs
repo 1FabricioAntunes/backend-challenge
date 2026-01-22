@@ -3,6 +3,7 @@ using FluentAssertions;
 using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.UnitTests.Helpers;
 using Xunit;
+using TransactionEntity = TransactionProcessor.Domain.Entities.Transaction;
 
 namespace TransactionProcessor.Domain.UnitTests.Tests.Transaction;
 
@@ -29,7 +30,7 @@ public class TransactionTests : TestBase
         var card = "123456789012";
 
         // Act
-        var transaction = new Transaction(
+        var transaction = new TransactionEntity(
             fileId,
             storeId,
             typeCode,
@@ -60,7 +61,7 @@ public class TransactionTests : TestBase
         var storeId = Guid.NewGuid();
 
         // Act
-        var transaction = new Transaction(
+        var transaction = new TransactionEntity(
             fileId,
             storeId,
             transactionTypeCode: "1",
@@ -90,7 +91,7 @@ public class TransactionTests : TestBase
         var storeId = Guid.NewGuid();
 
         // Act
-        Action act = () => new Transaction(
+        Action act = () => new TransactionEntity(
             fileId,
             storeId,
             invalidCode,
@@ -117,7 +118,7 @@ public class TransactionTests : TestBase
         var storeId = Guid.NewGuid();
 
         // Act
-        Action act = () => new Transaction(
+        Action act = () => new TransactionEntity(
             fileId,
             storeId,
             transactionTypeCode: "4",
@@ -142,7 +143,7 @@ public class TransactionTests : TestBase
         var futureDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1));
 
         // Act
-        Action act = () => new Transaction(
+        Action act = () => new TransactionEntity(
             fileId,
             storeId,
             transactionTypeCode: "4",
@@ -165,7 +166,7 @@ public class TransactionTests : TestBase
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         // Act
-        var transaction = new Transaction(
+        var transaction = new TransactionEntity(
             Guid.NewGuid(),
             Guid.NewGuid(),
             transactionTypeCode: "2",
