@@ -527,7 +527,10 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "[{CorrelationId}] Failed to apply database migrations", startupCorrelationId);
-    throw; // Fail fast - API cannot run without a properly migrated database
+    Log.Fatal("[{CorrelationId}] Migration error details: {Error}", startupCorrelationId, ex.Message);
+    // Fail fast - API cannot run without a properly migrated database
+    // This will cause the container to restart, allowing for retry
+    throw;
 }
 
 Log.Information("API will be available at: https://localhost:5001");
