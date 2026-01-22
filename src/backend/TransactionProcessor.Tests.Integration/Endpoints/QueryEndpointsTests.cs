@@ -70,11 +70,11 @@ public class QueryEndpointsTests : IAsyncLifetime
         // Create transaction types (if not seeded)
         var transactionTypes = new[]
         {
-            new TransactionType { TypeCode = "1", Description = "Débito", Nature = "Expense", Sign = "-" },
-            new TransactionType { TypeCode = "2", Description = "Crédito", Nature = "Income", Sign = "+" },
-            new TransactionType { TypeCode = "3", Description = "Financiamento", Nature = "Income", Sign = "+" },
-            new TransactionType { TypeCode = "4", Description = "Débito", Nature = "Expense", Sign = "-" },
-            new TransactionType { TypeCode = "5", Description = "TED", Nature = "Expense", Sign = "-" }
+            new TransactionType { TypeCode = "1", Description = "Debit", Nature = "Income", Sign = "+" },
+            new TransactionType { TypeCode = "2", Description = "Boleto", Nature = "Expense", Sign = "-" },
+            new TransactionType { TypeCode = "3", Description = "Financing", Nature = "Expense", Sign = "-" },
+            new TransactionType { TypeCode = "4", Description = "Credit", Nature = "Income", Sign = "+" },
+            new TransactionType { TypeCode = "5", Description = "Loan Receipt", Nature = "Income", Sign = "+" }
         };
 
         foreach (var type in transactionTypes)
