@@ -28,7 +28,7 @@ public class CNABParserTests
             owner: "OWNER NAME",
             store: "STORE MAIN");
 
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line + "\n"));
+        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line));
 
         var result = await _parser.ParseAsync(stream);
 
@@ -70,7 +70,7 @@ public class CNABParserTests
             owner: "OWNER",
             store: "STORE");
 
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line + "\n"));
+        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line));
 
         var result = await _parser.ParseAsync(stream);
 
@@ -91,7 +91,7 @@ public class CNABParserTests
             owner: "OWNER",
             store: "STORE");
 
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line + "\n"));
+        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(line));
 
         var result = await _parser.ParseAsync(stream);
 
@@ -109,8 +109,8 @@ public class CNABParserTests
         builder.Append(cpf); // 11
         builder.Append(card); // 12
         builder.Append(time); // 6
-        builder.Append(owner.PadRight(14)); // 14
-        builder.Append(store.PadRight(19)); // 19
+        builder.Append(owner.PadRight(14).Substring(0, 14)); // 14
+        builder.Append(store.PadRight(18).Substring(0, 18)); // 18 (not 19 to keep total at 80)
 
         var line = builder.ToString();
         line.Length.Should().Be(80, "CNAB lines must be exactly 80 characters for test setup");
