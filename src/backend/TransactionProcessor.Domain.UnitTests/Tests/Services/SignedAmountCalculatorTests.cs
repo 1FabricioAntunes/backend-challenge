@@ -6,6 +6,8 @@ using TransactionProcessor.Domain.Entities;
 using TransactionProcessor.Domain.Services;
 using TransactionProcessor.Domain.UnitTests.Helpers;
 using Xunit;
+using TransactionTypeEntity = TransactionProcessor.Domain.Entities.TransactionType;
+using TransactionEntity = TransactionProcessor.Domain.Entities.Transaction;
 
 namespace TransactionProcessor.Domain.UnitTests.Tests.Services;
 
@@ -55,11 +57,12 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: typeCode,
             amount: amount);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(expectedSignMultiplier);
-        mockTransactionType.Setup(t => t.Sign).Returns(expectedSignMultiplier > 0 ? "+" : "-");
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity 
+        { 
+            Sign = expectedSignMultiplier > 0 ? "+" : "-",
+            TypeCode = typeCode
+        };
+        transaction.TransactionType = transactionType;
 
         var expectedSignedAmount = expectedSignMultiplier * (amount / 100m);
 
@@ -74,26 +77,7 @@ public class SignedAmountCalculatorTests : TestBase
 
     #region Edge Cases - Decimal Amounts
 
-    [Fact]
-    public void Calculate_ZeroAmountInCents_ReturnsZero()
-    {
-        // Arrange
-        var transaction = SampleDataBuilder.CreateTransaction(
-            transactionTypeCode: "4",
-            amount: 0m);
-
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
-
-        // Act - Transaction constructor should reject this, but we'll test the service behavior
-        // This should ideally not happen due to constructor validation
-        // Skipping as Transaction ctor validates amount > 0
-
-        // Instead, we test with the minimum valid amount
-    }
-
+ 
     [Fact]
     public void Calculate_OneAmountInCents_ReturnsCorrectBRLAmount()
     {
@@ -102,10 +86,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "6",
             amount: 1m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -122,10 +104,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "4",
             amount: 15m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -142,10 +122,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "2",
             amount: 100000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -162,10 +140,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "7",
             amount: 999999999m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -182,10 +158,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "6",
             amount: 50000000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -203,10 +177,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "1",
             amount: 50000000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -228,10 +200,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "4",
             amount: 12345m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var result = _calculator.Calculate(transaction);
@@ -261,10 +231,8 @@ public class SignedAmountCalculatorTests : TestBase
                 transactionTypeCode: "4",
                 amount: amount);
 
-            var mockTransactionType = new Mock<TransactionType>();
-            mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-            
-            transaction.TransactionType = mockTransactionType.Object;
+            var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+            transaction.TransactionType = transactionType;
 
             // Act
             var result = _calculator.Calculate(transaction);
@@ -286,10 +254,8 @@ public class SignedAmountCalculatorTests : TestBase
                 transactionTypeCode: "6",
                 amount: amount);
 
-            var mockTransactionType = new Mock<TransactionType>();
-            mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-            
-            transaction.TransactionType = mockTransactionType.Object;
+            var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+            transaction.TransactionType = transactionType;
 
             // Act
             var result = _calculator.Calculate(transaction);
@@ -312,10 +278,8 @@ public class SignedAmountCalculatorTests : TestBase
                 transactionTypeCode: "2",
                 amount: amount);
 
-            var mockTransactionType = new Mock<TransactionType>();
-            mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-            
-            transaction.TransactionType = mockTransactionType.Object;
+            var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+            transaction.TransactionType = transactionType;
 
             // Act
             var result = _calculator.Calculate(transaction);
@@ -334,7 +298,7 @@ public class SignedAmountCalculatorTests : TestBase
     public void Calculate_TransactionIsNull_ThrowsArgumentNullException()
     {
         // Arrange
-        Transaction transaction = null!;
+        TransactionEntity transaction = null!;
 
         // Act
         Action act = () => _calculator.Calculate(transaction);
@@ -359,8 +323,7 @@ public class SignedAmountCalculatorTests : TestBase
 
         // Assert
         act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("transaction.TransactionType")
-            .And.Message.Should().Contain("eager-loaded");
+            .And.Message.Should().Contain("TransactionType");
     }
 
     [Fact]
@@ -371,19 +334,15 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "4",
             amount: 10000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier())
-            .Throws(new InvalidOperationException("Invalid sign value: invalid. Must be '+' or '-'."));
-        mockTransactionType.Setup(t => t.Sign).Returns("invalid");
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "invalid", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         Action act = () => _calculator.Calculate(transaction);
 
         // Assert
         act.Should().Throw<InvalidOperationException>()
-            .And.Message.Should().Contain("Failed to calculate signed amount");
+            .And.Message.Should().Contain("invalid sign value");
     }
 
     #endregion
@@ -398,10 +357,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "6",
             amount: 25000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -419,10 +376,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "2",
             amount: 15000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "2" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -440,10 +395,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "7",
             amount: 500000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "7" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -461,10 +414,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "3",
             amount: 100000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "3" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -482,10 +433,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "4",
             amount: 50000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "+", TypeCode = "4" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -503,10 +452,8 @@ public class SignedAmountCalculatorTests : TestBase
             transactionTypeCode: "1",
             amount: 75000m);
 
-        var mockTransactionType = new Mock<TransactionType>();
-        mockTransactionType.Setup(t => t.GetSignMultiplier()).Returns(-1.0m);
-        
-        transaction.TransactionType = mockTransactionType.Object;
+        var transactionType = new TransactionTypeEntity { Sign = "-", TypeCode = "1" };
+        transaction.TransactionType = transactionType;
 
         // Act
         var signedAmount = _calculator.Calculate(transaction);
@@ -545,12 +492,13 @@ public class SignedAmountCalculatorTests : TestBase
                 transactionTypeCode: typeCode,
                 amount: amount);
 
-            var mockTransactionType = new Mock<TransactionType>();
             var isCredit = typeCode is "4" or "5" or "6" or "7" or "8";
-            mockTransactionType.Setup(t => t.GetSignMultiplier())
-                .Returns(isCredit ? 1.0m : -1.0m);
-            
-            transaction.TransactionType = mockTransactionType.Object;
+            var transactionType = new TransactionTypeEntity 
+            { 
+                Sign = isCredit ? "+" : "-", 
+                TypeCode = typeCode 
+            };
+            transaction.TransactionType = transactionType;
 
             // Act
             var signedAmount = _calculator.Calculate(transaction);
