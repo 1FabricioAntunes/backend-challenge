@@ -202,15 +202,33 @@ export const transactionApi = {
    */
   getTransactions: async (
     page = 1,
-    pageSize = 50
-  ): Promise<{ transactions: any[]; total: number }> => {
-    const response = await apiClient.get<{ transactions: any[]; total: number }>(
+    pageSize = 50,
+    storeId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<{ items: any[]; totalCount: number; page: number; pageSize: number }> => {
+    const params: Record<string, string | number> = { page, pageSize };
+    if (storeId) params.storeId = storeId;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    
+    const response = await apiClient.get<{ items: any[]; totalCount: number; page: number; pageSize: number }>(
       '/api/transactions/v1',
-      {
-        params: { page, pageSize },
-      }
+      { params }
     );
-    return response.data;
+    // Handle both response formats: direct data or nested in data property
+    const data = response.data as any;
+    // If response has items property, use it; otherwise assume it's the PagedResult directly
+    if (data.items) {
+      return data;
+    }
+    // Fallback: if response structure is different, try to extract items
+    return {
+      items: Array.isArray(data) ? data : (data.items || []),
+      totalCount: data.totalCount || data.total || 0,
+      page: data.page || page,
+      pageSize: data.pageSize || pageSize,
+    };
   },
 
   /**
@@ -231,9 +249,10 @@ export const storeApi = {
    * Get list of stores
    * GET /api/stores/v1
    */
-  getStores: async (): Promise<{ stores: any[] }> => {
-    const response = await apiClient.get<{ stores: any[] }>('/api/stores/v1');
-    return response.data;
+  getStores: async (): Promise<any[]> => {
+    const response = await apiClient.get<any[]>('/api/stores/v1');
+    // API returns array directly
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   /**
