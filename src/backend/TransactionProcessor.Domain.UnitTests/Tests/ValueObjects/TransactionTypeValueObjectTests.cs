@@ -95,4 +95,92 @@ public class TransactionTypeValueObjectTests
         text.Should().Contain("4");
         text.Should().Contain("Cr");
     }
+
+    #region Operator Overloads - Null Handling
+
+    [Fact]
+    public void EqualityOperator_WithNullLeft_ReturnsTrueWhenRightIsNull()
+    {
+        // Arrange
+        TransactionType? left = null;
+        TransactionType? right = null;
+
+        // Act
+        var result = left == right;
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void EqualityOperator_WithNullLeft_ReturnsFalseWhenRightIsNotNull()
+    {
+        // Arrange
+        TransactionType? left = null;
+        var right = TransactionType.Type4;
+
+        // Act
+        var result = left == right;
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void EqualityOperator_WithNullRight_ReturnsFalseWhenLeftIsNotNull()
+    {
+        // Arrange
+        var left = TransactionType.Type4;
+        TransactionType? right = null;
+
+        // Act
+        var result = left == right;
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void InequalityOperator_WithNullLeft_ReturnsFalseWhenRightIsNull()
+    {
+        // Arrange
+        TransactionType? left = null;
+        TransactionType? right = null;
+
+        // Act
+        var result = left != right;
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void InequalityOperator_WithNullLeft_ReturnsTrueWhenRightIsNotNull()
+    {
+        // Arrange
+        TransactionType? left = null;
+        var right = TransactionType.Type4;
+
+        // Act
+        var result = left != right;
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void InequalityOperator_WithNullRight_ReturnsTrueWhenLeftIsNotNull()
+    {
+        // Arrange
+        var left = TransactionType.Type4;
+        TransactionType? right = null;
+
+        // Act
+        var result = left != right;
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    #endregion
 }
