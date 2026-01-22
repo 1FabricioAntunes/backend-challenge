@@ -161,10 +161,14 @@ export const fileApi = {
    * GET /api/files/v1?page=1&pageSize=10
    */
   getFiles: async (page = 1, pageSize = 10): Promise<{ files: any[]; total: number }> => {
-    const response = await apiClient.get<{ files: any[]; total: number }>('/api/files/v1', {
+    const response = await apiClient.get<{ items: any[]; totalCount: number; page: number; pageSize: number }>('/api/files/v1', {
       params: { page, pageSize },
     });
-    return response.data;
+    // Map backend response format to frontend expected format
+    return {
+      files: response.data.items || [],
+      total: response.data.totalCount || 0,
+    };
   },
 
   /**

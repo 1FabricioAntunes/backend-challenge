@@ -3,9 +3,12 @@ import { useAuth } from './context/AuthContext';
 import LoginComponent from './components/LoginComponent';
 import FileUploadComponent from './components/FileUploadComponent';
 import TransactionQueryComponent from './components/TransactionQueryComponent';
+import FileListComponent from './components/FileListComponent';
+import FileDetailsPage from './components/FileDetailsPage';
 import './styles/App.css';
 
-type Tab = 'upload' | 'transactions';
+type Tab = 'upload' | 'transactions' | 'files';
+type View = 'list' | 'details';
 
 /**
  * Main Application Component
@@ -19,6 +22,8 @@ type Tab = 'upload' | 'transactions';
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('upload');
+  const [filesView, setFilesView] = useState<View>('list');
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
   /**
    * Get user initials for avatar display
@@ -93,14 +98,33 @@ export default function App() {
       <nav className="app-tabs">
         <button
           className={`tab-button ${activeTab === 'upload' ? 'active' : ''}`}
-          onClick={() => setActiveTab('upload')}
+          onClick={() => {
+            setActiveTab('upload');
+            setFilesView('list');
+            setSelectedFileId(null);
+          }}
           aria-current={activeTab === 'upload' ? 'page' : undefined}
         >
           Upload File
         </button>
         <button
+          className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('files');
+            setFilesView('list');
+            setSelectedFileId(null);
+          }}
+          aria-current={activeTab === 'files' ? 'page' : undefined}
+        >
+          Files
+        </button>
+        <button
           className={`tab-button ${activeTab === 'transactions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('transactions')}
+          onClick={() => {
+            setActiveTab('transactions');
+            setFilesView('list');
+            setSelectedFileId(null);
+          }}
           aria-current={activeTab === 'transactions' ? 'page' : undefined}
         >
           Query Transactions
@@ -109,6 +133,24 @@ export default function App() {
 
       <main className="app-content">
         {activeTab === 'upload' && <FileUploadComponent />}
+        {activeTab === 'files' && (
+          filesView === 'list' ? (
+            <FileListComponent
+              onFileSelect={(fileId) => {
+                setSelectedFileId(fileId);
+                setFilesView('details');
+              }}
+            />
+          ) : selectedFileId ? (
+            <FileDetailsPage
+              fileId={selectedFileId}
+              onBack={() => {
+                setFilesView('list');
+                setSelectedFileId(null);
+              }}
+            />
+          ) : null
+        )}
         {activeTab === 'transactions' && <TransactionQueryComponent />}
       </main>
 
