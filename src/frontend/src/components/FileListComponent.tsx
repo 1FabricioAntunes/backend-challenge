@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { fileApi } from '../services/api';
 import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileListComponent.css';
@@ -18,32 +18,100 @@ type FileListComponentProps = {
   onFileSelect: (fileId: string) => void;
 };
 
+// Polling interval in milliseconds (3 seconds)
+const POLLING_INTERVAL_MS = 3000;
+
 export default function FileListComponent({ onFileSelect }: FileListComponentProps) {
   const [files, setFiles] = useState<FileDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const pollingIntervalRef = useRef<number | null>(null);
   const pageSize = 20;
 
-  const loadFiles = async () => {
+  /**
+   * Check if any file requires polling (Uploaded or Processing status)
+   */
+  const shouldPoll = useCallback((filesList: FileDto[]): boolean => {
+    return filesList.some(file => file.status === 'Uploaded' || file.status === 'Processing');
+  }, []);
+
+  const loadFiles = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
       const response = await fileApi.getFiles(page, pageSize);
-      setFiles(response.files || []);
+      const filesData = response.files || [];
+      setFiles(filesData);
       setTotal(response.total || 0);
+      
+      // Stop polling if all files are in terminal states
+      if (!shouldPoll(filesData)) {
+        if (pollingIntervalRef.current !== null) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load files:', err);
       setError(err.response?.data?.message || 'Failed to load files. Please try again.');
+      // Stop polling on error
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, shouldPoll]);
 
+  /**
+   * Initial load and setup polling
+   */
   useEffect(() => {
+    // Initial load
     loadFiles();
-  }, [page]);
+
+    // Cleanup function
+    return () => {
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [page, loadFiles]);
+
+  /**
+   * Setup polling when files require it
+   */
+  useEffect(() => {
+    // Only poll if there are files in non-terminal states
+    if (files.length > 0 && shouldPoll(files)) {
+      // Clear any existing interval
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+      }
+
+      // Set up polling interval
+      pollingIntervalRef.current = window.setInterval(() => {
+        loadFiles();
+      }, POLLING_INTERVAL_MS);
+    } else {
+      // Stop polling if all files reached terminal states
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount or when files change
+    return () => {
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [files, shouldPoll, loadFiles]);
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -63,11 +131,35 @@ export default function FileListComponent({ onFileSelect }: FileListComponentPro
   return (
     <div className="file-list">
       <header className="file-list__header">
-        <div>
-          <h2 className="file-list__title">Uploaded Files</h2>
-          <p className="file-list__subtitle">
-            View all uploaded files and their processing status
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+          <div>
+            <h2 className="file-list__title">Uploaded Files</h2>
+            <p className="file-list__subtitle">
+              View all uploaded files and their processing status
+            </p>
+          </div>
+          {files.length > 0 && shouldPoll(files) && (
+            <span 
+              style={{ 
+                fontSize: '0.875rem', 
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              aria-label="Auto-refreshing status"
+            >
+              <span style={{ 
+                display: 'inline-block',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: '#007bff',
+                animation: 'pulse 2s ease-in-out infinite'
+              }}></span>
+              Auto-refreshing...
+            </span>
+          )}
         </div>
         <button
           className="file-list__refresh-button"

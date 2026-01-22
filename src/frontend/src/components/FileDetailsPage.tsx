@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { fileApi } from '../services/api';
 import StatusBadge, { type FileStatus } from './StatusBadge';
 import '../styles/FileDetailsPage.css';
@@ -18,28 +18,98 @@ type FileDetailsPageProps = {
   onBack: () => void;
 };
 
+// Polling interval in milliseconds (3 seconds)
+const POLLING_INTERVAL_MS = 3000;
+
 export default function FileDetailsPage({ fileId, onBack }: FileDetailsPageProps) {
   const [file, setFile] = useState<FileDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<number | null>(null);
 
+  /**
+   * Check if file status requires polling (Uploaded or Processing)
+   */
+  const shouldPoll = useCallback((status: string): boolean => {
+    return status === 'Uploaded' || status === 'Processing';
+  }, []);
+
+  /**
+   * Load file data from API
+   */
+  const loadFile = useCallback(async () => {
+    try {
+      setError(null);
+      const fileData = await fileApi.getFile(fileId);
+      setFile(fileData);
+      
+      // Stop polling if file reached terminal state
+      if (!shouldPoll(fileData.status)) {
+        if (pollingIntervalRef.current !== null) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load file details:', err);
+      setError(err.response?.data?.message || 'Failed to load file details. Please try again.');
+      // Stop polling on error
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [fileId, shouldPoll]);
+
+  /**
+   * Initial load and setup polling
+   */
   useEffect(() => {
-    const loadFile = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const fileData = await fileApi.getFile(fileId);
-        setFile(fileData);
-      } catch (err: any) {
-        console.error('Failed to load file details:', err);
-        setError(err.response?.data?.message || 'Failed to load file details. Please try again.');
-      } finally {
-        setLoading(false);
+    // Initial load
+    loadFile();
+
+    // Cleanup function
+    return () => {
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
+  }, [fileId, loadFile]);
 
-    loadFile();
-  }, [fileId]);
+  /**
+   * Setup polling when file status requires it
+   */
+  useEffect(() => {
+    // Only poll if file is in a non-terminal state
+    if (file && shouldPoll(file.status)) {
+      // Clear any existing interval
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+      }
+
+      // Set up polling interval
+      pollingIntervalRef.current = window.setInterval(() => {
+        loadFile();
+      }, POLLING_INTERVAL_MS);
+    } else {
+      // Stop polling if file reached terminal state
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount or when file/status changes
+    return () => {
+      if (pollingIntervalRef.current !== null) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [file, shouldPoll, loadFile]);
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -112,7 +182,31 @@ export default function FileDetailsPage({ fileId, onBack }: FileDetailsPageProps
           </svg>
           Back to Files
         </button>
-        <h2 className="file-details__title">File Processing Details</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+          <h2 className="file-details__title">File Processing Details</h2>
+          {file && shouldPoll(file.status) && (
+            <span 
+              style={{ 
+                fontSize: '0.875rem', 
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              aria-label="Auto-refreshing status"
+            >
+              <span style={{ 
+                display: 'inline-block',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: '#4CAF50',
+                animation: 'pulse 2s infinite'
+              }} />
+              Auto-refreshing...
+            </span>
+          )}
+        </div>
       </header>
 
       <div className="file-details__content">
